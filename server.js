@@ -11,6 +11,8 @@ const logsRouter = require('./routes/logs');
 const dashboardRouter = require('./routes/dashboard');
 const credentialsRouter = require('./routes/credentials');
 const webhooksRouter = require('./routes/webhooks');
+const netboxRouter = require('./routes/netbox');
+const activityService = require('./services/activity');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,9 +28,24 @@ app.use('/api/logs', logsRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/credentials', credentialsRouter);
 app.use('/api/webhooks', webhooksRouter);
+app.use('/api/netbox', netboxRouter);
 
 // Keep original schedule-status path working
 app.get('/api/schedule-status', (req, res) => res.redirect('/api/dashboard/schedule-status'));
+
+app.get('/api/activity-stream', (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+    });
+    res.write('data: {"type":"connected"}\n\n');
+    activityService.addClient(res);
+    const hb = setInterval(() => {
+        try { res.write(':heartbeat\n\n'); } catch { clearInterval(hb); }
+    }, 30000);
+    req.on('close', () => clearInterval(hb));
+});
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 

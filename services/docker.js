@@ -126,7 +126,7 @@ async function updateDockerHost(hostId, updateType = 'manual', progressCallback 
     const projects = await dbAll(`
         SELECT p.*, h.name as host_name, h.ip_address, h.port, h.username,
                h.auth_type, h.password_hash, h.ssh_key_path, h.sudo_password_hash,
-               h.docker_compose_command
+               h.docker_compose_command, h.credential_id
         FROM docker_compose_projects p
         JOIN docker_hosts h ON p.host_id = h.id
         WHERE h.id = ?
@@ -169,4 +169,4 @@ async function updateDockerGroup(groupId, updateType = 'manual', progressCallbac
     return { group_id: groupId, results };
 }
 
-module.exports = { updateDockerComposeProject, updateDockerHost, updateDockerGroup, validatePath };
+module.exports = { updateDockerComposeProject, updateDockerHost, updateDockerGroup, validatePath, connectToDockerHost };

@@ -5,7 +5,7 @@ let dockerHosts = [];
 let dockerProjects = [];
 let dockerGroups = [];
 
-// ── XSS helper ────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
     return String(str)
@@ -14,6 +14,12 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// SQLite CURRENT_TIMESTAMP stores UTC without 'Z'; append it so JS parses correctly
+function parseDbDate(str) {
+    if (!str) return null;
+    return new Date(str.includes('T') || str.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(str) ? str : str.replace(' ', 'T') + 'Z');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -28,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadLogs();
     loadCredentials();
     loadWebhooks();
+
+    initActivityStream();
 
     document.getElementById('add-server-form').addEventListener('submit', handleAddServer);
     document.getElementById('add-group-form').addEventListener('submit', handleAddGroup);
@@ -50,7 +58,16 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'add-docker-project-modal', close: closeAddProjectModal },
             { id: 'edit-docker-host-modal', close: closeEditDockerHostModal },
             { id: 'edit-docker-project-modal', close: closeEditDockerProjectModal },
-            { id: 'edit-docker-group-modal', close: closeEditDockerGroupModal }
+            { id: 'edit-docker-group-modal', close: closeEditDockerGroupModal },
+            { id: 'netbox-import-modal', close: closeNetboxImportModal },
+            { id: 'add-server-modal', close: closeAddServerModal },
+            { id: 'add-group-modal', close: closeAddGroupModal },
+            { id: 'add-docker-host-modal', close: closeAddDockerHostModal },
+            { id: 'add-docker-group-modal', close: closeAddDockerGroupModal },
+            { id: 'add-credential-modal', close: closeAddCredentialModal },
+            { id: 'add-webhook-modal', close: closeAddWebhookModal },
+            { id: 'netbox-docker-import-modal', close: closeNetboxDockerImportModal },
+            { id: 'discover-modal', close: closeDiscoverModal }
         ];
         for (const { id, close } of modals) {
             const modal = document.getElementById(id);
@@ -186,7 +203,7 @@ function renderDashboard(data) {
         }
         recentEl.innerHTML = recentLogs.map(log => {
             const icon = log.entity_type === 'docker' ? '🐳' : '🖥️';
-            const ts = new Date(log.timestamp).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
+            const ts = parseDbDate(log.timestamp).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
             const statusClass = log.success ? 'text-green-400' : 'text-red-400';
             return `<div class="flex items-center gap-3 py-2 border-b border-slate-700/50 last:border-0">
                 <span class="text-base">${icon}</span>
@@ -252,7 +269,7 @@ async function handleAddServer(e) {
     e.preventDefault();
     try {
         const res = await fetch('/api/servers', { method: 'POST', body: new FormData(e.target) });
-        if (res.ok) { showSuccess('Server added!'); e.target.reset(); await loadServers(); }
+        if (res.ok) { showSuccess('Server added!'); e.target.reset(); closeAddServerModal(); await loadServers(); }
         else { const err = await res.json(); showError(err.error || 'Failed to add server'); }
     } catch { showError('Failed to add server'); }
 }
@@ -302,7 +319,6 @@ function editServer(serverId) {
     document.getElementById('edit-server-port').value = server.port;
     document.getElementById('edit-server-username').value = server.username;
     document.getElementById('edit-auth-type').value = server.auth_type;
-    document.getElementById('edit-auto-update').checked = !!server.auto_update;
     loadGroupsForEditSelect();
     document.getElementById('edit-server-group').value = server.group_id || '';
 
@@ -399,11 +415,24 @@ function displayGroups() {
                 schedule += `, from ${new Date(g.auto_update_start_date).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })}`;
             if (g.auto_reboot_if_required) schedule += ' <span class="text-cyan-400">(auto-reboot)</span>';
         }
+        const members = servers.filter(s => s.group_id === g.id);
+        const membersHtml = members.length
+            ? `<div class="mt-3 mb-4">
+                <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Members (${members.length})</p>
+                <div class="space-y-1">
+                    ${members.map(s => `<div class="flex items-center justify-between text-sm px-2 py-1 bg-slate-700/50 rounded-lg">
+                        <span class="text-slate-200 font-medium">${escapeHtml(s.name)}</span>
+                        <span class="text-slate-400 font-mono text-xs">${escapeHtml(s.ip_address)}</span>
+                    </div>`).join('')}
+                </div>
+            </div>`
+            : `<p class="text-xs text-slate-500 mt-3 mb-4 italic">No servers in this group</p>`;
         return `
         <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-5 hover:border-slate-600 transition-all duration-200">
             <h3 class="text-lg font-semibold text-white mb-2">${escapeHtml(g.name)}</h3>
             <p class="text-slate-300 text-sm mb-3">${escapeHtml(g.description || 'No description')}</p>
-            ${schedule ? `<p class="text-sm text-slate-400 mb-4"><span class="text-slate-500">Schedule:</span> ${schedule}</p>` : ''}
+            ${schedule ? `<p class="text-sm text-slate-400"><span class="text-slate-500">Schedule:</span> ${schedule}</p>` : ''}
+            ${membersHtml}
             <div class="grid grid-cols-3 gap-2">
                 <button onclick="editGroup(${g.id})" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-all">Edit</button>
                 <button onclick="updateGroupWithProgress(${g.id})" class="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium transition-all">Update</button>
@@ -440,7 +469,7 @@ async function handleAddGroup(e) {
     if (data.auto_update_start_date) data.auto_update_start_date = new Date(data.auto_update_start_date).toISOString();
     try {
         const res = await fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-        if (res.ok) { showSuccess('Group created!'); e.target.reset(); await loadGroups(); }
+        if (res.ok) { showSuccess('Group created!'); e.target.reset(); closeAddGroupModal(); await loadGroups(); }
         else { const err = await res.json(); showError(err.error || 'Failed to create group'); }
     } catch { showError('Failed to create group'); }
 }
@@ -654,6 +683,9 @@ function displayDockerHosts() {
                 <button onclick="updateDockerHostWithProgress(${h.id})" class="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium transition-all">Update All</button>
                 <button onclick="deleteDockerHost(${h.id})" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-all">Delete</button>
             </div>
+            <button onclick="showDiscoverModal(${h.id})" class="mt-2 w-full px-3 py-2 bg-teal-700/30 hover:bg-teal-700/50 border border-teal-600/40 text-teal-300 rounded-lg text-sm font-medium transition-all">
+                Discover Projects
+            </button>
         </div>`).join('');
 }
 
@@ -666,7 +698,7 @@ async function handleAddDockerHost(e) {
     e.preventDefault();
     try {
         const res = await fetch('/api/docker/hosts', { method: 'POST', body: new FormData(e.target) });
-        if (res.ok) { showSuccess('Docker host added!'); e.target.reset(); await loadDockerHosts(); loadDockerGroupsForSelect(); showTab('docker-hosts'); }
+        if (res.ok) { showSuccess('Docker host added!'); e.target.reset(); closeAddDockerHostModal(); await loadDockerHosts(); loadDockerGroupsForSelect(); }
         else { const err = await res.json(); showError(err.error || 'Failed to add Docker host'); }
     } catch { showError('Failed to add Docker host'); }
 }
@@ -917,14 +949,27 @@ function displayDockerGroups() {
         const schedule = g.auto_update_interval
             ? `Every ${escapeHtml(String(g.auto_update_interval))} ${escapeHtml(g.auto_update_interval_unit)}`
             : 'No schedule';
+        const members = dockerHosts.filter(h => h.group_id === g.id);
+        const membersHtml = members.length
+            ? `<div class="mt-3 mb-4">
+                <p class="text-xs text-slate-500 uppercase tracking-wide mb-2">Members (${members.length})</p>
+                <div class="space-y-1">
+                    ${members.map(h => `<div class="flex items-center justify-between text-sm px-2 py-1 bg-slate-700/50 rounded-lg">
+                        <span class="text-slate-200 font-medium">${escapeHtml(h.name)}</span>
+                        <span class="text-slate-400 font-mono text-xs">${escapeHtml(h.ip_address)}</span>
+                    </div>`).join('')}
+                </div>
+            </div>`
+            : `<p class="text-xs text-slate-500 mt-3 mb-4 italic">No hosts in this group</p>`;
         return `
             <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-5 hover:border-slate-600 transition-all">
                 <h3 class="text-lg font-semibold text-white mb-2">${escapeHtml(g.name)}</h3>
-                <div class="space-y-1 mb-4 text-sm">
+                <div class="space-y-1 mb-2 text-sm">
                     ${g.description ? `<p class="text-slate-300">${escapeHtml(g.description)}</p>` : ''}
                     <p class="text-slate-300"><span class="text-slate-400">Schedule:</span> ${schedule}</p>
                     ${g.auto_update_start_date ? `<p class="text-slate-300"><span class="text-slate-400">From:</span> ${new Date(g.auto_update_start_date).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })}</p>` : ''}
                 </div>
+                ${membersHtml}
                 <div class="grid grid-cols-3 gap-2">
                     <button onclick="editDockerGroup(${g.id})" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-all">Edit</button>
                     <button onclick="updateDockerGroupWithProgress(${g.id})" class="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium transition-all">Update All</button>
@@ -957,7 +1002,7 @@ async function handleAddDockerGroup(e) {
     if (data.auto_update_start_date) data.auto_update_start_date = new Date(data.auto_update_start_date).toISOString();
     try {
         const res = await fetch('/api/docker/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-        if (res.ok) { showSuccess('Docker group created!'); e.target.reset(); await loadDockerGroups(); showTab('docker-groups'); }
+        if (res.ok) { showSuccess('Docker group created!'); e.target.reset(); closeAddDockerGroupModal(); await loadDockerGroups(); }
         else { const err = await res.json(); showError(err.error || 'Failed to create Docker group'); }
     } catch { showError('Failed to create Docker group'); }
 }
@@ -1071,7 +1116,7 @@ function displayLogs(logs) {
         return;
     }
     tbody.innerHTML = logs.map(log => {
-        const ts = new Date(log.timestamp).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
+        const ts = parseDbDate(log.timestamp).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' });
         const icon = log.entity_type === 'docker' ? '🐳' : '🖥️';
         const badge = log.update_type === 'automatic'
             ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-900/50 text-cyan-300 border border-cyan-700">Auto</span>'
@@ -1155,7 +1200,7 @@ function displayCredentials() {
     el.innerHTML = credentials.map(c => {
         const authIcon = c.auth_type === 'ssh_key' ? '🔑' : '🔐';
         const authLabel = c.auth_type === 'ssh_key' ? 'SSH Key' : 'Password';
-        const ts = new Date(c.created_at).toLocaleDateString('nl-NL', { timeZone: 'Europe/Amsterdam' });
+        const ts = parseDbDate(c.created_at).toLocaleDateString('nl-NL', { timeZone: 'Europe/Amsterdam' });
         return `
         <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-5 hover:border-slate-600 transition-all duration-200">
             <div class="flex items-start justify-between mb-3">
@@ -1257,7 +1302,7 @@ async function handleAddCredential(e) {
             e.target.reset();
             toggleCredAuthFields();
             await loadCredentials();
-            showTab('credentials');
+            closeAddCredentialModal();
         } else {
             const err = await res.json();
             showError(err.error || 'Failed to save credential');
@@ -1291,7 +1336,7 @@ function displayWebhooks() {
     const el = document.getElementById('webhooks-list');
     if (!el) return;
     if (!webhooks.length) {
-        el.innerHTML = '<div class="col-span-3 text-center py-12 text-slate-400">No webhooks configured yet. <button onclick="showTab(\'add-webhook\')" class="text-blue-400 hover:underline">Add one</button>.</div>';
+        el.innerHTML = '<div class="col-span-3 text-center py-12 text-slate-400">No webhooks configured yet. <button onclick="openAddWebhookModal()" class="text-blue-400 hover:underline">Add one</button>.</div>';
         return;
     }
     el.innerHTML = webhooks.map(wh => `
@@ -1342,7 +1387,7 @@ async function handleAddWebhook(e) {
             showSuccess('Webhook saved!');
             e.target.reset();
             await loadWebhooks();
-            showTab('webhooks');
+            closeAddWebhookModal();
         } else {
             const err = await res.json();
             showError(err.error || 'Failed to save webhook');
@@ -1378,4 +1423,695 @@ async function deleteWebhook(id) {
         if (res.ok) { showSuccess('Webhook deleted'); await loadWebhooks(); }
         else { const err = await res.json(); showError(err.error || 'Failed to delete webhook'); }
     } catch { showError('Failed to delete webhook'); }
+}
+
+// ── Add modals ────────────────────────────────────────────────────────────────
+
+function openAddServerModal() {
+    document.getElementById('add-server-form').reset();
+    const m = document.getElementById('add-server-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+function closeAddServerModal() {
+    const m = document.getElementById('add-server-modal');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+function openAddGroupModal() {
+    document.getElementById('add-group-form').reset();
+    const m = document.getElementById('add-group-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+function closeAddGroupModal() {
+    const m = document.getElementById('add-group-modal');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+function openAddDockerHostModal() {
+    document.getElementById('add-docker-host-form').reset();
+    const m = document.getElementById('add-docker-host-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+function closeAddDockerHostModal() {
+    const m = document.getElementById('add-docker-host-modal');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+function openAddDockerGroupModal() {
+    document.getElementById('add-docker-group-form').reset();
+    const m = document.getElementById('add-docker-group-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+function closeAddDockerGroupModal() {
+    const m = document.getElementById('add-docker-group-modal');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+function openAddCredentialModal() {
+    document.getElementById('add-credential-form').reset();
+    toggleCredAuthFields();
+    const m = document.getElementById('add-credential-modal');
+    m.classList.remove('hidden'); m.classList.add('flex');
+}
+function closeAddCredentialModal() {
+    const m = document.getElementById('add-credential-modal');
+    m.classList.add('hidden'); m.classList.remove('flex');
+}
+
+function openAddWebhookModal() {
+    document.getElementById('add-webhook-form').reset();
+    const m = document.getElementById('add-webhook-modal');
+    m.classList.remove('hidden'); m.classList.add('flex');
+}
+function closeAddWebhookModal() {
+    const m = document.getElementById('add-webhook-modal');
+    m.classList.add('hidden'); m.classList.remove('flex');
+}
+
+// ── NetBox Import ─────────────────────────────────────────────────────────────
+
+let netboxVMs = [];
+
+async function openNetboxImportModal() {
+    netboxVMs = [];
+    document.getElementById('netbox-vm-list').classList.add('hidden');
+    document.getElementById('netbox-options').classList.add('hidden');
+    document.getElementById('netbox-result').classList.add('hidden');
+    document.getElementById('netbox-import-btn').disabled = true;
+    document.getElementById('netbox-fetch-status').textContent = '';
+    document.getElementById('netbox-vm-table').innerHTML = '';
+    document.getElementById('netbox-select-all').checked = false;
+    document.getElementById('netbox-port').value = '22';
+    document.getElementById('netbox-sudo').value = '';
+    // Populate credentials dropdown
+    const credSel = document.getElementById('netbox-credential');
+    credSel.innerHTML = '<option value="">— Select a saved credential —</option>';
+    try {
+        const res = await fetch('/api/credentials');
+        const creds = await res.json();
+        creds.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${escapeHtml(c.name)} (${escapeHtml(c.username)} / ${c.auth_type})`;
+            credSel.appendChild(opt);
+        });
+    } catch {}
+
+    // Populate groups dropdown
+    const groupSel = document.getElementById('netbox-group');
+    groupSel.innerHTML = '<option value="">— No group —</option>';
+    try {
+        const res = await fetch('/api/groups');
+        const grps = await res.json();
+        grps.forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = g.id;
+            opt.textContent = escapeHtml(g.name);
+            groupSel.appendChild(opt);
+        });
+    } catch {}
+
+    document.getElementById('netbox-import-modal').classList.remove('hidden');
+}
+
+function closeNetboxImportModal() {
+    document.getElementById('netbox-import-modal').classList.add('hidden');
+}
+
+async function fetchNetboxVMs() {
+    const btn = document.getElementById('netbox-fetch-btn');
+    const status = document.getElementById('netbox-fetch-status');
+    btn.disabled = true;
+    status.textContent = 'Fetching…';
+
+    try {
+        const res = await fetch('/api/netbox/vms');
+        const data = await res.json();
+
+        if (!res.ok) {
+            status.textContent = '';
+            showError(data.error || 'Failed to fetch VMs from NetBox');
+            btn.disabled = false;
+            return;
+        }
+
+        if (!data.configured) {
+            status.textContent = '';
+            document.getElementById('netbox-vm-list').classList.remove('hidden');
+            document.getElementById('netbox-vm-table').innerHTML = `
+                <div class="p-4 text-sm text-amber-400 bg-amber-900/20 border border-amber-700/40 rounded-lg">
+                    NetBox is not configured. Add <code class="bg-slate-700 px-1 rounded">NETBOX_URL</code> and
+                    <code class="bg-slate-700 px-1 rounded">NETBOX_TOKEN</code> environment variables and restart the container.
+                </div>`;
+            btn.disabled = false;
+            return;
+        }
+
+        netboxVMs = data.vms;
+        status.textContent = `${data.vms.length} VM(s) found`;
+
+        renderNetboxVMTable(data.vms);
+        document.getElementById('netbox-vm-list').classList.remove('hidden');
+        document.getElementById('netbox-options').classList.remove('hidden');
+        updateNetboxImportBtn();
+    } catch (err) {
+        status.textContent = '';
+        showError('Failed to fetch VMs: ' + err.message);
+    }
+
+    btn.disabled = false;
+}
+
+function renderNetboxVMTable(vms) {
+    const table = document.getElementById('netbox-vm-table');
+    if (vms.length === 0) {
+        table.innerHTML = '<div class="p-4 text-sm text-slate-400 text-center">No VMs found with the <code class="bg-slate-700 px-1 rounded text-indigo-300">update-manager</code> tag.</div>';
+        return;
+    }
+
+    const rows = vms.map(vm => {
+        const disabled = vm.alreadyExists ? 'disabled' : '';
+        const rowClass = vm.alreadyExists ? 'opacity-40' : 'hover:bg-slate-700/30';
+        const badge = vm.alreadyExists
+            ? '<span class="text-xs text-slate-500 italic">already imported</span>'
+            : '';
+        const cluster = vm.cluster ? escapeHtml(vm.cluster) : '<span class="text-slate-500">—</span>';
+        return `
+            <div class="flex items-center gap-4 px-4 py-3 border-b border-slate-700/50 last:border-0 ${rowClass}">
+                <input type="checkbox" data-vm-id="${vm.id}" class="netbox-vm-check rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500" ${disabled} ${vm.alreadyExists ? '' : ''} onchange="updateNetboxImportBtn()">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-white truncate">${escapeHtml(vm.name)}</span>
+                        ${badge}
+                    </div>
+                    <div class="text-xs text-slate-400">${escapeHtml(vm.ip)} &nbsp;·&nbsp; ${cluster}</div>
+                </div>
+            </div>`;
+    }).join('');
+
+    table.innerHTML = rows;
+}
+
+function netboxToggleAll(checked) {
+    document.querySelectorAll('.netbox-vm-check:not(:disabled)').forEach(cb => { cb.checked = checked; });
+    updateNetboxImportBtn();
+}
+
+function updateNetboxImportBtn() {
+    const anyChecked = [...document.querySelectorAll('.netbox-vm-check:not(:disabled)')].some(cb => cb.checked);
+    document.getElementById('netbox-import-btn').disabled = !anyChecked;
+}
+
+async function importNetboxVMs() {
+    const checkedIds = [...document.querySelectorAll('.netbox-vm-check:not(:disabled):checked')]
+        .map(cb => parseInt(cb.dataset.vmId));
+
+    if (checkedIds.length === 0) return;
+
+    const credential_id = document.getElementById('netbox-credential').value;
+    if (!credential_id) { showError('Please select a credential before importing'); return; }
+
+    const btn = document.getElementById('netbox-import-btn');
+    btn.disabled = true;
+    btn.textContent = 'Importing…';
+
+    const body = {
+        vmIds: checkedIds,
+        credential_id: parseInt(credential_id),
+        group_id: document.getElementById('netbox-group').value || null,
+        port: parseInt(document.getElementById('netbox-port').value) || 22,
+        sudo_password: document.getElementById('netbox-sudo').value || null
+    };
+
+    try {
+        const res = await fetch('/api/netbox/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+
+        if (!res.ok) { showError(data.error || 'Import failed'); btn.disabled = false; btn.textContent = 'Import Selected'; return; }
+
+        const resultEl = document.getElementById('netbox-result');
+        resultEl.classList.remove('hidden');
+
+        let html = '';
+        if (data.imported.length > 0) {
+            html += `<div class="p-3 bg-green-900/20 border border-green-700/40 rounded-lg mb-3">
+                <p class="text-sm font-medium text-green-400 mb-1">✅ Imported ${data.imported.length} server(s)</p>
+                <ul class="text-xs text-green-300 space-y-0.5">${data.imported.map(s => `<li>${escapeHtml(s.name)} (${escapeHtml(s.ip)})</li>`).join('')}</ul>
+            </div>`;
+        }
+        if (data.skipped.length > 0) {
+            html += `<div class="p-3 bg-slate-700/50 border border-slate-600/40 rounded-lg">
+                <p class="text-sm font-medium text-slate-300 mb-1">Skipped ${data.skipped.length} item(s)</p>
+                <ul class="text-xs text-slate-400 space-y-0.5">${data.skipped.map(s => `<li>${escapeHtml(s.name || s.id)} — ${escapeHtml(s.reason)}</li>`).join('')}</ul>
+            </div>`;
+        }
+        resultEl.innerHTML = html;
+
+        if (data.imported.length > 0) {
+            closeNetboxImportModal();
+            await loadServers();
+            showSuccess(`${data.imported.length} server(s) imported from NetBox`);
+        }
+    } catch (err) {
+        showError('Import failed: ' + err.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Import Selected';
+}
+
+// ── Docker Discovery ──────────────────────────────────────────────────────────
+function showDiscoverModal(hostId = null) {
+    const sel = document.getElementById('discover-host');
+    sel.innerHTML = '<option value="">Select a host...</option>' +
+        dockerHosts.map(h => `<option value="${h.id}" ${h.id === hostId ? 'selected' : ''}>${escapeHtml(h.name)}</option>`).join('');
+    document.getElementById('discover-results').classList.add('hidden');
+    document.getElementById('discover-results').innerHTML = '';
+    const modal = document.getElementById('discover-modal');
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+
+function closeDiscoverModal() {
+    const modal = document.getElementById('discover-modal');
+    modal.classList.add('hidden'); modal.classList.remove('flex');
+}
+
+async function runDiscoveryScan() {
+    const hostId = document.getElementById('discover-host').value;
+    const rootPath = document.getElementById('discover-root-path').value.trim();
+    const maxDepth = document.getElementById('discover-max-depth').value;
+
+    if (!hostId) { showError('Please select a host'); return; }
+    if (!rootPath) { showError('Please enter a root folder path'); return; }
+
+    const btn = document.getElementById('discover-scan-btn');
+    const spinner = document.getElementById('discover-spinner');
+    btn.disabled = true;
+    spinner.classList.remove('hidden');
+
+    const resultsEl = document.getElementById('discover-results');
+    resultsEl.classList.add('hidden');
+    resultsEl.innerHTML = '';
+
+    try {
+        const res = await fetch(`/api/docker/hosts/${hostId}/discover`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ root_path: rootPath, max_depth: maxDepth })
+        });
+        const data = await res.json();
+        if (!res.ok) { showError(data.error || 'Discovery failed'); return; }
+        renderDiscoveryResults(data, parseInt(hostId));
+    } catch (err) {
+        showError('Discovery failed: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+    }
+}
+
+function renderDiscoveryResults({ found, alreadyRegistered }, hostId) {
+    const el = document.getElementById('discover-results');
+    let html = '';
+
+    if (found.length === 0 && alreadyRegistered.length === 0) {
+        html = '<p class="text-center text-slate-400 py-4">No docker-compose files found in that directory.</p>';
+    } else {
+        if (found.length > 0) {
+            html += `
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-semibold text-slate-300">New Projects Found (${found.length})</h3>
+                        <label class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                            <input type="checkbox" id="disc-select-all" checked onchange="toggleSelectAllDiscovered(this)"
+                                class="h-3.5 w-3.5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-blue-500">
+                            Select all
+                        </label>
+                    </div>
+                    <div class="space-y-3" id="discover-new-list">
+                        ${found.map((p, i) => `
+                            <div class="flex items-start gap-3 p-3 bg-slate-900/50 border border-slate-700 rounded-lg">
+                                <input type="checkbox" id="disc-${i}" checked
+                                    class="mt-2 h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                                    data-compose="${escapeHtml(p.composePath)}"
+                                    data-workdir="${escapeHtml(p.workingDirectory)}">
+                                <div class="flex-1 min-w-0">
+                                    <input type="text" value="${escapeHtml(p.name)}" id="disc-name-${i}"
+                                        class="block w-full px-2 py-1 mb-1 bg-slate-800 border border-slate-600 rounded text-sm font-medium text-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all">
+                                    <p class="text-xs text-slate-400 truncate" title="${escapeHtml(p.composePath)}">${escapeHtml(p.composePath)}</p>
+                                </div>
+                            </div>`).join('')}
+                    </div>
+                    <button onclick="addDiscoveredProjects(${hostId})"
+                        class="mt-4 w-full flex justify-center py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all">
+                        Add Selected Projects
+                    </button>
+                </div>`;
+        } else {
+            html += '<p class="text-slate-400 text-sm py-2">No new projects found — all discovered projects are already registered.</p>';
+        }
+
+        if (alreadyRegistered.length > 0) {
+            html += `
+                <div class="mt-5 pt-5 border-t border-slate-700">
+                    <h3 class="text-sm font-semibold text-slate-500 mb-3">Already Registered (${alreadyRegistered.length})</h3>
+                    <div class="space-y-2">
+                        ${alreadyRegistered.map(p => `
+                            <div class="flex items-center gap-3 p-3 bg-slate-900/30 border border-slate-700/50 rounded-lg opacity-60">
+                                <svg class="h-4 w-4 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                </svg>
+                                <div class="min-w-0">
+                                    <p class="text-sm text-slate-400 font-medium">${escapeHtml(p.name)}</p>
+                                    <p class="text-xs text-slate-500 truncate" title="${escapeHtml(p.composePath)}">${escapeHtml(p.composePath)}</p>
+                                </div>
+                            </div>`).join('')}
+                    </div>
+                </div>`;
+        }
+    }
+
+    el.innerHTML = html;
+    el.classList.remove('hidden');
+}
+
+function toggleSelectAllDiscovered(cb) {
+    document.querySelectorAll('#discover-new-list input[type="checkbox"]').forEach(c => c.checked = cb.checked);
+}
+
+async function addDiscoveredProjects(hostId) {
+    const list = document.getElementById('discover-new-list');
+    if (!list) return;
+
+    const checkboxes = Array.from(list.querySelectorAll('input[type="checkbox"]:checked'));
+    if (checkboxes.length === 0) { showError('No projects selected'); return; }
+
+    const items = checkboxes.map(cb => {
+        const i = cb.id.replace('disc-', '');
+        return {
+            host_id: hostId,
+            name: (document.getElementById(`disc-name-${i}`)?.value || '').trim(),
+            compose_file_path: cb.dataset.compose,
+            working_directory: cb.dataset.workdir
+        };
+    });
+
+    let added = 0, failed = 0;
+    for (const item of items) {
+        try {
+            const res = await fetch('/api/docker/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(item)
+            });
+            if (res.ok) added++;
+            else failed++;
+        } catch { failed++; }
+    }
+
+    if (added > 0) {
+        showSuccess(`Added ${added} project${added !== 1 ? 's' : ''}${failed > 0 ? ` (${failed} failed)` : ''}`);
+        closeDiscoverModal();
+        await loadDockerProjects();
+        await loadDockerHosts();
+    } else {
+        showError('Failed to add projects — check paths are valid');
+    }
+}
+
+// ── NetBox Docker Host Import ──────────────────────────────────────────────────
+
+let netboxDockerVMs = [];
+
+async function openNetboxDockerImportModal() {
+    netboxDockerVMs = [];
+    document.getElementById('netbox-docker-vm-list').classList.add('hidden');
+    document.getElementById('netbox-docker-options').classList.add('hidden');
+    document.getElementById('netbox-docker-result').classList.add('hidden');
+    document.getElementById('netbox-docker-import-btn').disabled = true;
+    document.getElementById('netbox-docker-fetch-status').textContent = '';
+    document.getElementById('netbox-docker-vm-table').innerHTML = '';
+    document.getElementById('netbox-docker-select-all').checked = false;
+    document.getElementById('netbox-docker-port').value = '22';
+    document.getElementById('netbox-docker-sudo').value = '';
+
+    const credSel = document.getElementById('netbox-docker-credential');
+    credSel.innerHTML = '<option value="">— Select a saved credential —</option>';
+    try {
+        const res = await fetch('/api/credentials');
+        const creds = await res.json();
+        creds.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${escapeHtml(c.name)} (${escapeHtml(c.username)} / ${c.auth_type})`;
+            credSel.appendChild(opt);
+        });
+    } catch {}
+
+    const groupSel = document.getElementById('netbox-docker-group');
+    groupSel.innerHTML = '<option value="">— No group —</option>';
+    try {
+        const res = await fetch('/api/docker/groups');
+        const grps = await res.json();
+        grps.forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = g.id;
+            opt.textContent = escapeHtml(g.name);
+            groupSel.appendChild(opt);
+        });
+    } catch {}
+
+    document.getElementById('netbox-docker-import-modal').classList.remove('hidden');
+}
+
+function closeNetboxDockerImportModal() {
+    document.getElementById('netbox-docker-import-modal').classList.add('hidden');
+}
+
+async function fetchNetboxDockerVMs() {
+    const btn = document.getElementById('netbox-docker-fetch-btn');
+    const status = document.getElementById('netbox-docker-fetch-status');
+    btn.disabled = true;
+    status.textContent = 'Fetching…';
+
+    try {
+        const res = await fetch('/api/netbox/docker-vms');
+        const data = await res.json();
+
+        if (!res.ok) {
+            status.textContent = '';
+            showError(data.error || 'Failed to fetch VMs from NetBox');
+            btn.disabled = false;
+            return;
+        }
+
+        if (!data.configured) {
+            status.textContent = '';
+            document.getElementById('netbox-docker-vm-list').classList.remove('hidden');
+            document.getElementById('netbox-docker-vm-table').innerHTML = `
+                <div class="p-4 text-sm text-amber-400 bg-amber-900/20 border border-amber-700/40 rounded-lg">
+                    NetBox is not configured. Add <code class="bg-slate-700 px-1 rounded">NETBOX_URL</code> and
+                    <code class="bg-slate-700 px-1 rounded">NETBOX_TOKEN</code> environment variables and restart the container.
+                </div>`;
+            btn.disabled = false;
+            return;
+        }
+
+        netboxDockerVMs = data.vms;
+        status.textContent = `${data.vms.length} VM(s) found`;
+
+        renderNetboxDockerVMTable(data.vms);
+        document.getElementById('netbox-docker-vm-list').classList.remove('hidden');
+        document.getElementById('netbox-docker-options').classList.remove('hidden');
+        updateNetboxDockerImportBtn();
+    } catch (err) {
+        status.textContent = '';
+        showError('Failed to fetch VMs: ' + err.message);
+    }
+
+    btn.disabled = false;
+}
+
+function renderNetboxDockerVMTable(vms) {
+    const table = document.getElementById('netbox-docker-vm-table');
+    if (vms.length === 0) {
+        table.innerHTML = '<div class="p-4 text-sm text-slate-400 text-center">No VMs found with the <code class="bg-slate-700 px-1 rounded text-indigo-300">update-manager</code> tag.</div>';
+        return;
+    }
+
+    const rows = vms.map(vm => {
+        const disabled = vm.alreadyExists ? 'disabled' : '';
+        const rowClass = vm.alreadyExists ? 'opacity-40' : 'hover:bg-slate-700/30';
+        const badge = vm.alreadyExists
+            ? '<span class="text-xs text-slate-500 italic">already imported</span>'
+            : '';
+        const cluster = vm.cluster ? escapeHtml(vm.cluster) : '<span class="text-slate-500">—</span>';
+        return `
+            <div class="flex items-center gap-4 px-4 py-3 border-b border-slate-700/50 last:border-0 ${rowClass}">
+                <input type="checkbox" data-vm-id="${vm.id}" class="netbox-docker-vm-check rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500" ${disabled} onchange="updateNetboxDockerImportBtn()">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-white truncate">${escapeHtml(vm.name)}</span>
+                        ${badge}
+                    </div>
+                    <div class="text-xs text-slate-400">${escapeHtml(vm.ip)} &nbsp;·&nbsp; ${cluster}</div>
+                </div>
+            </div>`;
+    }).join('');
+
+    table.innerHTML = rows;
+}
+
+function netboxDockerToggleAll(checked) {
+    document.querySelectorAll('.netbox-docker-vm-check:not(:disabled)').forEach(cb => { cb.checked = checked; });
+    updateNetboxDockerImportBtn();
+}
+
+function updateNetboxDockerImportBtn() {
+    const anyChecked = [...document.querySelectorAll('.netbox-docker-vm-check:not(:disabled)')].some(cb => cb.checked);
+    document.getElementById('netbox-docker-import-btn').disabled = !anyChecked;
+}
+
+async function importNetboxDockerVMs() {
+    const checkedIds = [...document.querySelectorAll('.netbox-docker-vm-check:not(:disabled):checked')]
+        .map(cb => parseInt(cb.dataset.vmId));
+
+    if (checkedIds.length === 0) return;
+
+    const credential_id = document.getElementById('netbox-docker-credential').value;
+    if (!credential_id) { showError('Please select a credential before importing'); return; }
+
+    const btn = document.getElementById('netbox-docker-import-btn');
+    btn.disabled = true;
+    btn.textContent = 'Importing…';
+
+    const body = {
+        vmIds: checkedIds,
+        credential_id: parseInt(credential_id),
+        group_id: document.getElementById('netbox-docker-group').value || null,
+        port: parseInt(document.getElementById('netbox-docker-port').value) || 22,
+        sudo_password: document.getElementById('netbox-docker-sudo').value || null
+    };
+
+    try {
+        const res = await fetch('/api/netbox/docker-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+
+        if (!res.ok) { showError(data.error || 'Import failed'); btn.disabled = false; btn.textContent = 'Import Selected'; return; }
+
+        const resultEl = document.getElementById('netbox-docker-result');
+        resultEl.classList.remove('hidden');
+
+        let html = '';
+        if (data.imported.length > 0) {
+            html += `<div class="p-3 bg-green-900/20 border border-green-700/40 rounded-lg mb-3">
+                <p class="text-sm font-medium text-green-400 mb-1">✅ Imported ${data.imported.length} docker host(s)</p>
+                <ul class="text-xs text-green-300 space-y-0.5">${data.imported.map(s => `<li>${escapeHtml(s.name)} (${escapeHtml(s.ip)})</li>`).join('')}</ul>
+            </div>`;
+        }
+        if (data.skipped.length > 0) {
+            html += `<div class="p-3 bg-slate-700/50 border border-slate-600/40 rounded-lg">
+                <p class="text-sm font-medium text-slate-300 mb-1">Skipped ${data.skipped.length} item(s)</p>
+                <ul class="text-xs text-slate-400 space-y-0.5">${data.skipped.map(s => `<li>${escapeHtml(s.name || s.id)} — ${escapeHtml(s.reason)}</li>`).join('')}</ul>
+            </div>`;
+        }
+        resultEl.innerHTML = html;
+
+        if (data.imported.length > 0) {
+            closeNetboxDockerImportModal();
+            await loadDockerHosts();
+            showSuccess(`${data.imported.length} docker host(s) imported from NetBox`);
+        }
+    } catch (err) {
+        showError('Import failed: ' + err.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Import Selected';
+}
+
+// ── Activity stream (scheduled auto-updates) ──────────────────────────────────
+
+let activityDismissed = false;
+let activityHideTimer = null;
+
+function initActivityStream() {
+    const es = new EventSource('/api/activity-stream');
+    es.onmessage = (e) => {
+        try { handleActivityEvent(JSON.parse(e.data)); } catch {}
+    };
+    es.onerror = () => {
+        es.close();
+        setTimeout(initActivityStream, 5000);
+    };
+}
+
+function handleActivityEvent(data) {
+    const panel   = document.getElementById('activity-panel');
+    const dot     = document.getElementById('activity-dot');
+    const groupEl = document.getElementById('activity-group');
+    const itemEl  = document.getElementById('activity-item');
+    const msgEl   = document.getElementById('activity-message');
+    const progEl  = document.getElementById('activity-progress');
+    const titleEl = panel.querySelector('span.font-semibold');
+
+    if (data.type === 'update_start') {
+        activityDismissed = false;
+        clearTimeout(activityHideTimer);
+        const typeLabel = data.groupType === 'docker' ? 'Docker Group' : 'Server Group';
+        titleEl.textContent = 'Auto-update running';
+        dot.classList.remove('bg-green-400');
+        dot.classList.add('bg-cyan-400', 'animate-pulse');
+        groupEl.textContent = `${typeLabel}: ${escapeHtml(data.groupName)}`;
+        itemEl.textContent = 'Starting…';
+        msgEl.textContent = '';
+        progEl.textContent = data.total ? `0 / ${data.total}` : '';
+        panel.classList.remove('hidden');
+    } else if (data.type === 'item_start') {
+        if (activityDismissed) return;
+        itemEl.textContent = escapeHtml(data.itemName);
+        msgEl.textContent = '';
+        if (data.current && data.total) progEl.textContent = `${data.current} / ${data.total}`;
+    } else if (data.type === 'item_progress') {
+        if (activityDismissed) return;
+        itemEl.textContent = escapeHtml(data.itemName);
+        msgEl.textContent = escapeHtml(data.message || '');
+    } else if (data.type === 'update_done') {
+        if (activityDismissed) return;
+        titleEl.textContent = 'Auto-update finished';
+        dot.classList.remove('animate-pulse', 'bg-cyan-400');
+        dot.classList.add('bg-green-400');
+        itemEl.textContent = 'Completed';
+        msgEl.textContent = '';
+        progEl.textContent = '';
+        activityHideTimer = setTimeout(() => {
+            panel.classList.add('hidden');
+            dot.classList.remove('bg-green-400');
+            dot.classList.add('bg-cyan-400');
+        }, 10000);
+        loadLogs();
+        loadDashboard();
+    }
+}
+
+function dismissActivity() {
+    activityDismissed = true;
+    clearTimeout(activityHideTimer);
+    document.getElementById('activity-panel').classList.add('hidden');
 }

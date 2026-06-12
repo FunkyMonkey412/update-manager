@@ -51,7 +51,7 @@ router.post('/test-connection', async (req, res) => {
 });
 
 router.post('/', upload.single('ssh_key'), async (req, res) => {
-    const { name, ip_address, port, username, auth_type, password, sudo_password, group_id, auto_update, credential_id } = req.body;
+    const { name, ip_address, port, username, auth_type, password, sudo_password, group_id, credential_id } = req.body;
     const sudo_hash = sudo_password ? encrypt(sudo_password) : null;
     const cred_id = credential_id || null;
 
@@ -72,16 +72,16 @@ router.post('/', upload.single('ssh_key'), async (req, res) => {
         }
 
         const result = await dbRun(
-            `INSERT INTO servers (name, ip_address, port, username, auth_type, password_hash, ssh_key_path, sudo_password_hash, group_id, auto_update, credential_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, ip_address, port || 22, effective_username, effective_auth_type, password_hash, ssh_key_path, sudo_hash, group_id || null, auto_update || 0, cred_id]
+            `INSERT INTO servers (name, ip_address, port, username, auth_type, password_hash, ssh_key_path, sudo_password_hash, group_id, credential_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [name, ip_address, port || 22, effective_username, effective_auth_type, password_hash, ssh_key_path, sudo_hash, group_id || null, cred_id]
         );
         res.json({ id: result.lastID, name, ip_address, port: port || 22, username: effective_username, auth_type: effective_auth_type });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/:id', upload.single('ssh_key'), async (req, res) => {
-    const { name, ip_address, port, username, auth_type, password, sudo_password, group_id, auto_update, credential_id } = req.body;
+    const { name, ip_address, port, username, auth_type, password, sudo_password, group_id, credential_id } = req.body;
     try {
         const current = await dbGet('SELECT * FROM servers WHERE id = ?', [req.params.id]);
         if (!current) return res.status(404).json({ error: 'Server not found' });
@@ -111,9 +111,9 @@ router.put('/:id', upload.single('ssh_key'), async (req, res) => {
 
         await dbRun(
             `UPDATE servers SET name=?, ip_address=?, port=?, username=?, auth_type=?, password_hash=?,
-             ssh_key_path=?, sudo_password_hash=?, group_id=?, auto_update=?, credential_id=? WHERE id=?`,
+             ssh_key_path=?, sudo_password_hash=?, group_id=?, credential_id=? WHERE id=?`,
             [name, ip_address, port || 22, effective_username, effective_auth_type, password_hash, ssh_key_path, sudo_hash,
-             group_id || null, auto_update || 0, cred_id, req.params.id]
+             group_id || null, cred_id, req.params.id]
         );
         res.json({ id: req.params.id, name, ip_address, port: port || 22, username: effective_username, auth_type: effective_auth_type });
     } catch (err) { res.status(500).json({ error: err.message }); }

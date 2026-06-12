@@ -5,3 +5,4 @@ ssh-keys/
 *.log
 .env
 update-manager.tar.gz
+.claude/

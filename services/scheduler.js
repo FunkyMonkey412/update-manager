@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { dbAll, dbGet } = require('../db');
 const { updateServer, rebootServer } = require('./update');
 const { updateDockerGroup } = require('./docker');
+const { emit: activityEmit } = require('./activity');
 
 const TZ = 'Europe/Amsterdam';
 
@@ -37,29 +38,24 @@ function startScheduler() {
                 console.log(`[scheduler] ${time} — Running scheduled update for group: ${group.name}`);
 
                 const servers = await dbAll('SELECT * FROM servers WHERE group_id = ?', [group.id]);
-                for (const server of servers) {
-                    const result = await updateServer(server, null, 'automatic');
+                activityEmit({ type: 'update_start', groupType: 'server', groupName: group.name, total: servers.length });
+
+                for (let i = 0; i < servers.length; i++) {
+                    const server = servers[i];
+                    activityEmit({ type: 'item_start', groupType: 'server', groupName: group.name, itemName: server.name, current: i + 1, total: servers.length });
+                    const result = await updateServer(server, (progress) => {
+                        activityEmit({ type: 'item_progress', groupType: 'server', groupName: group.name, itemName: server.name, message: progress.message });
+                    }, 'automatic');
                     if (result.success && result.needsReboot && group.auto_reboot_if_required) {
                         console.log(`[scheduler] Auto-rebooting ${server.name}`);
+                        activityEmit({ type: 'item_progress', groupType: 'server', groupName: group.name, itemName: server.name, message: 'Rebooting...' });
                         await rebootServer(server);
                     }
                 }
+
+                activityEmit({ type: 'update_done', groupType: 'server', groupName: group.name, total: servers.length });
             }
         } catch (err) { console.error('[scheduler] Server group error:', err.message); }
-
-        // Individual servers (no group)
-        try {
-            const servers = await dbAll('SELECT * FROM servers WHERE auto_update = 1 AND group_id IS NULL');
-            for (const server of servers) {
-                const row = await dbGet('SELECT last_update FROM servers WHERE id = ?', [server.id]);
-                const lastUpdate = row?.last_update;
-                const oneWeek = 604800000;
-                if (!lastUpdate || (Date.now() - new Date(lastUpdate).getTime()) >= oneWeek) {
-                    console.log(`[scheduler] Auto-updating individual server: ${server.name}`);
-                    await updateServer(server, null, 'automatic');
-                }
-            }
-        } catch (err) { console.error('[scheduler] Individual server error:', err.message); }
 
         // Docker groups
         try {
@@ -74,7 +70,28 @@ function startScheduler() {
                 `, [group.id]);
                 if (!isUpdateDue(group.auto_update_start_date, group.auto_update_interval, group.auto_update_interval_unit, row?.last_update)) continue;
                 console.log(`[scheduler] Running scheduled Docker update for group: ${group.name}`);
-                await updateDockerGroup(group.id, 'automatic');
+                const dockerHosts = await dbAll('SELECT * FROM docker_hosts WHERE group_id = ?', [group.id]);
+                activityEmit({ type: 'update_start', groupType: 'docker', groupName: group.name, total: dockerHosts.length });
+                let hostIndex = 0;
+                await updateDockerGroup(group.id, 'automatic', ({ stage, message }) => {
+                    try {
+                        const d = JSON.parse(message);
+                        if (stage === 'host_start') {
+                            hostIndex++;
+                            activityEmit({ type: 'item_start', groupType: 'docker', groupName: group.name, itemName: d.name, current: hostIndex, total: dockerHosts.length });
+                        } else if (stage === 'host_progress') {
+                            // d.message is another JSON string: { project, stage, message }
+                            let text = '';
+                            if (d.stage === 'project_progress' && d.message) {
+                                try { const p = JSON.parse(d.message); text = p.project ? `[${p.project}] ${p.message || ''}` : (p.message || ''); } catch { text = d.message; }
+                            } else if (d.stage === 'project_start' && d.message) {
+                                try { const p = JSON.parse(d.message); text = `Starting: ${p.name || ''} (${p.current}/${p.total})`; } catch {}
+                            }
+                            if (text) activityEmit({ type: 'item_progress', groupType: 'docker', groupName: group.name, itemName: d.host, message: text });
+                        }
+                    } catch {}
+                });
+                activityEmit({ type: 'update_done', groupType: 'docker', groupName: group.name, total: dockerHosts.length });
             }
         } catch (err) { console.error('[scheduler] Docker group error:', err.message); }
 

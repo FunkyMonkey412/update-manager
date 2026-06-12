@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const { dbGet, dbAll, dbRun } = require('../db');
 const { encrypt } = require('../utils/crypto');
-const { updateDockerComposeProject, updateDockerHost, updateDockerGroup, validatePath } = require('../services/docker');
+const { updateDockerComposeProject, updateDockerHost, updateDockerGroup, validatePath, connectToDockerHost } = require('../services/docker');
 
 const router = express.Router();
 const upload = multer({ dest: 'ssh-keys/' });
@@ -249,6 +249,38 @@ router.post('/hosts/:id/update', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.post('/hosts/:id/discover', async (req, res) => {
+    const { root_path, max_depth = 3 } = req.body;
+    try {
+        validatePath(root_path);
+        const depth = Math.min(Math.max(parseInt(max_depth) || 3, 1), 8);
+
+        const host = await dbGet('SELECT * FROM docker_hosts WHERE id = ?', [req.params.id]);
+        if (!host) return res.status(404).json({ error: 'Docker host not found' });
+
+        const { ssh, sudoExec } = await connectToDockerHost(host);
+        const findCmd = `find ${root_path} -maxdepth ${depth} -type f 2>/dev/null | grep -E "/(docker-compose|compose)\\.(yml|yaml)$" | sort`;
+        const result = await sudoExec(findCmd);
+        ssh.dispose();
+
+        const composePaths = (result.stdout || '')
+            .split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        const existing = await dbAll('SELECT compose_file_path FROM docker_compose_projects WHERE host_id = ?', [req.params.id]);
+        const registeredPaths = new Set(existing.map(p => p.compose_file_path));
+
+        const found = [], alreadyRegistered = [];
+        for (const composePath of composePaths) {
+            const workingDirectory = composePath.substring(0, composePath.lastIndexOf('/'));
+            const name = workingDirectory.substring(workingDirectory.lastIndexOf('/') + 1);
+            const entry = { name, composePath, workingDirectory };
+            (registeredPaths.has(composePath) ? alreadyRegistered : found).push(entry);
+        }
+
+        res.json({ found, alreadyRegistered });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Docker Projects ───────────────────────────────────────────────────────────
 
 router.get('/projects', async (req, res) => {
@@ -323,7 +355,7 @@ router.post('/projects/:id/update', async (req, res) => {
     try {
         const project = await dbGet(`
             SELECT p.*, h.name as host_name, h.ip_address, h.port, h.username,
-                   h.auth_type, h.password_hash, h.ssh_key_path, h.sudo_password_hash, h.docker_compose_command
+                   h.auth_type, h.password_hash, h.ssh_key_path, h.sudo_password_hash, h.docker_compose_command, h.credential_id
             FROM docker_compose_projects p JOIN docker_hosts h ON p.host_id = h.id WHERE p.id = ?
         `, [req.params.id]);
         if (!project) return res.status(404).json({ error: 'Project not found' });

@@ -1,52 +1,59 @@
 # Server Update Manager
 
-A comprehensive web-based tool for managing Ubuntu/Debian server updates and Docker Compose projects with automatic scheduling capabilities.
+A web-based tool for managing Ubuntu/Debian server updates and Docker Compose projects with automatic scheduling, a credential vault, and NetBox integration.
 
 ## Features
 
 ### Server Management
-- **Automatic Updates**: Schedule periodic updates for server groups with flexible intervals
-- **Manual Updates**: Trigger updates on-demand for individual servers or groups
-- **Authentication**: Support for both SSH key and password authentication
-- **Sudo Support**: Configurable sudo passwords for systems requiring elevated permissions
-- **Reboot Management**: Automatic reboot detection and optional auto-reboot after updates
-- **Update Logging**: Detailed logs showing exactly what packages were upgraded
-- **Connection Testing**: Test SSH connectivity before adding servers
+- **Manual Updates**: Trigger updates on-demand for individual servers or entire groups
+- **Scheduled Updates**: Configure automatic update intervals per group (hours, days, weeks, months)
+- **SSH Authentication**: Password or SSH key, either stored directly or via the credential vault
+- **Sudo Support**: Configurable sudo password for systems requiring elevated permissions
+- **Reboot Management**: Automatic reboot detection; optional auto-reboot per group after updates
+- **Update Logging**: Detailed logs showing exactly which packages were upgraded
+- **Connection Testing**: Verify SSH connectivity before adding a server
+- **NetBox Import**: Bulk-import servers directly from a NetBox inventory
 
 ### Docker Management
-- **Docker Compose Updates**: Automatically pull latest images and recreate containers
-- **Project Organization**: Manage multiple Docker Compose projects per host
-- **Group Scheduling**: Schedule automatic updates for Docker groups
-- **Update Details**: View which images were pulled and containers were affected
-- **Multi-Host Support**: Manage Docker hosts across your infrastructure
+- **Docker Compose Updates**: Pull latest images and recreate containers automatically
+- **Project Discovery**: Scan a Docker host for `docker-compose.yml` files and register them in one step
+- **Project Organisation**: Manage multiple Compose projects per host
+- **Group Scheduling**: Schedule automatic updates for all projects across a Docker group
+- **Multi-Host Support**: Manage Docker hosts across your entire infrastructure
+- **NetBox Import**: Bulk-import Docker hosts directly from a NetBox inventory
 
-### Scheduling System
-- **Flexible Intervals**: Schedule updates by hours, days, weeks, or months
-- **Start Date Control**: Set specific date and time when automatic updates should begin
-- **Timezone Support**: All times displayed in Europe/Amsterdam timezone (configurable)
-- **Automatic Execution**: Updates run automatically via cron scheduler (checks every minute)
-- **Manual Override**: Can trigger updates manually at any time
+### Credential Vault
+- **Reusable Credentials**: Store SSH credentials (username + password or SSH key) once and apply them to multiple servers and Docker hosts
+- **AES-256-GCM Encryption**: All passwords, SSH keys, and sudo passwords are encrypted at rest
+- **Centralised Management**: Update a credential in one place; every server using it picks up the change automatically
+
+### Scheduling & Progress
+- **Flexible Intervals**: Per-group schedules with hours/days/weeks/months intervals and a configurable start date
+- **Timezone Support**: All times displayed and evaluated in Europe/Amsterdam (configurable via `TZ`)
+- **Scheduler Check**: Runs every minute; fires a group update when its interval has elapsed
+- **Live Activity Panel**: A real-time panel (bottom-right corner) appears automatically during any scheduled update, showing the current group, host/server, project, and progress counter. Dismissible; auto-hides 10 seconds after completion
+
+### Webhooks
+- **Update Notifications**: Send POST webhooks to any URL on update completion
+- **Configurable Events**: Triggered for both server and Docker update results (success and failure)
 
 ### Logging & History
-- **Update Logs**: Complete history of all updates (manual and automatic)
-- **Detailed Information**:
-  - Packages upgraded for server updates
-  - Images pulled and containers affected for Docker updates
-  - Full command output logs for troubleshooting
-- **Filterable View**: Filter logs by entity type (server/docker) and update type (manual/automatic)
-- **Expandable Details**: Click "Show Details" to see complete update information
+- **Complete History**: All updates (manual and automatic) are logged with timestamps in Europe/Amsterdam time
+- **Detailed Information**: Packages upgraded for server updates; images pulled and containers recreated for Docker updates; full command output for troubleshooting
+- **Filterable View**: Filter by entity type (server / docker) and update type (manual / automatic)
+- **Expandable Details**: Click "Show Details" for full command output
 - **Pagination**: Navigate through historical logs
 
 ### User Interface
-- **Modern Design**: Dark-themed UI with Tailwind CSS
-- **Real-time Updates**: Live progress feedback during update operations
-- **Responsive Layout**: Works on desktop, tablet, and mobile devices
-- **Tab-based Navigation**: Easy access to all features
-- **Modal Dialogs**: Clean forms for adding and editing resources
+- **Dark Theme**: Modern UI built with Tailwind CSS
+- **Real-time Progress**: Live SSE-based progress feedback during manual and scheduled updates
+- **Sidebar Navigation**: Tab-based layout with instant access to all sections
+- **Modal Dialogs**: Add and edit all resources via clean modal forms
+- **Group Member View**: Groups and Docker Groups tabs show which servers/hosts belong to each group
 
 ## Quick Start
 
-See [INSTALL.md](INSTALL.md) for complete production installation instructions.
+See [INSTALL.md](INSTALL.md) for full installation instructions.
 
 ```bash
 git clone https://github.com/FunkyMonkey412/update-manager.git
@@ -59,145 +66,217 @@ docker compose up -d
 
 ## Configuration
 
-### Authentication Methods
+### Environment Variables
 
-**Password Authentication:**
-- Enter the username and password for the server
-- Passwords are base64 encoded and stored
-- Sudo password can be configured separately
+Set in `docker-compose.yml`:
 
-**SSH Key Authentication:**
-- Upload your private key file (.pem, .key, id_rsa, etc.)
-- Keys are stored securely in the ssh-keys volume
-- Unencrypted keys only (encrypted keys not supported)
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3000` | HTTP port the app listens on |
+| `TZ` | `Europe/Amsterdam` | Timezone for scheduling and log display |
+| `NODE_ENV` | `production` | Node environment |
+| `ENCRYPTION_KEY` | *(auto-generated)* | 64-char hex AES-256 key. If unset, a key is generated and saved to `./data/encryption.key` |
+| `NETBOX_URL` | *(unset)* | Base URL of your NetBox instance, e.g. `https://netbox.example.com` |
+| `NETBOX_TOKEN` | *(unset)* | NetBox API token. Both variables must be set to enable the import feature |
+
+### Credential Vault
+
+The credential vault lets you define SSH credentials once and reuse them across any number of servers or Docker hosts.
+
+1. Go to the **Credentials** tab and click **+ Add Credential**
+2. Give it a name, enter the username, and choose password or SSH key
+3. When adding or editing a server/Docker host, select the credential from the dropdown instead of entering auth details manually
+
+Stored credentials are encrypted with AES-256-GCM. Updating a credential automatically applies to all servers/hosts that reference it.
+
+### Authentication (direct, without vault)
+
+**Password:** Enter username and password — stored AES-256-GCM encrypted.
+
+**SSH Key:** Upload a private key file (`.pem`, `.key`, `id_rsa`, etc.). Keys are stored in the `ssh-keys` volume. Unencrypted keys only.
 
 ### Server Groups
 
-- Organize servers by environment, function, or location
+- Organise servers by environment, function, or location
 - Perform batch updates on all servers in a group
-- Configure auto-update schedules per group:
-  - Set interval (e.g., 1 week, 2 days, 6 hours)
-  - Set start date and time
-  - Enable automatic reboot if required
+- Per-group auto-update schedule: interval, start date/time, optional auto-reboot
+- Auto-updates only run at the group level — there is no per-server automatic update
 
 ### Docker Groups
 
-- Organize Docker hosts into logical groups
-- Schedule automatic updates for all projects in a group
-- Configure update frequency independently from server groups
+- Organise Docker hosts into logical groups
+- Schedule automatic updates for all Compose projects across all hosts in the group
+- Independent schedule from server groups
+
+### Project Discovery
+
+On any Docker host card, click **Discover Projects** to scan the host's filesystem for `docker-compose.yml` / `compose.yml` files. Configure the root path and max depth, review results, and register discovered projects in one click.
+
+### NetBox Integration
+
+Set `NETBOX_URL` and `NETBOX_TOKEN` in `docker-compose.yml`, then use the **Import from NetBox** button on the Servers or Docker Hosts tab to select VMs from your NetBox inventory and import them in bulk. Already-imported IPs are shown as greyed out.
 
 ### Persistent Data
 
-All data is stored in mounted volumes:
-- `./data/` - SQLite database + encryption key
-- `./ssh-keys/` - Uploaded SSH private keys
-- `./logs/` - Application logs
+| Directory | Contents |
+|---|---|
+| `./data/` | SQLite database + encryption key |
+| `./ssh-keys/` | Uploaded SSH private keys |
+| `./logs/` | Application logs |
 
-Data survives container restarts and updates.
+Data survives container restarts and image updates.
 
 ## Technology Stack
 
 - **Backend**: Node.js + Express.js
 - **Database**: SQLite 3
-- **SSH**: node-ssh for remote command execution
-- **Scheduling**: node-cron for automatic updates
+- **SSH**: node-ssh
+- **Scheduling**: node-cron
+- **Progress Streaming**: Server-Sent Events (SSE)
+- **Encryption**: AES-256-GCM (Node.js `crypto`)
 - **Frontend**: Vanilla JavaScript + Tailwind CSS
 - **Deployment**: Docker + Docker Compose
 
 ## API Endpoints
 
 ### Servers
-- `GET /api/servers` - List all servers
-- `POST /api/servers` - Add new server
-- `PUT /api/servers/:id` - Update server
-- `DELETE /api/servers/:id` - Delete server
-- `POST /api/servers/:id/update` - Update specific server
-- `POST /api/servers/:id/reboot` - Reboot specific server
-- `GET /api/servers/:id/update-stream` - SSE stream for update progress
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/servers` | List all servers |
+| `POST` | `/api/servers` | Add server |
+| `PUT` | `/api/servers/:id` | Edit server |
+| `DELETE` | `/api/servers/:id` | Delete server |
+| `POST` | `/api/servers/:id/update` | Trigger update |
+| `POST` | `/api/servers/:id/reboot` | Reboot server |
+| `GET` | `/api/servers/:id/update-stream` | SSE progress stream |
+| `POST` | `/api/servers/test-connection` | Test SSH connectivity |
 
 ### Server Groups
-- `GET /api/groups` - List all groups
-- `POST /api/groups` - Create new group
-- `PUT /api/groups/:id` - Update group
-- `DELETE /api/groups/:id` - Delete group
-- `POST /api/groups/:id/update` - Update all servers in group
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/groups` | List all groups |
+| `POST` | `/api/groups` | Create group |
+| `PUT` | `/api/groups/:id` | Edit group |
+| `DELETE` | `/api/groups/:id` | Delete group |
+| `POST` | `/api/groups/:id/update` | Update all servers in group |
+| `GET` | `/api/groups/:id/update-stream` | SSE progress stream |
 
 ### Docker Hosts
-- `GET /api/docker/hosts` - List all Docker hosts
-- `POST /api/docker/hosts` - Add Docker host
-- `PUT /api/docker/hosts/:id` - Update Docker host
-- `DELETE /api/docker/hosts/:id` - Delete Docker host
-- `POST /api/docker/hosts/:id/update` - Update all projects on host
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/docker/hosts` | List all Docker hosts |
+| `POST` | `/api/docker/hosts` | Add Docker host |
+| `PUT` | `/api/docker/hosts/:id` | Edit Docker host |
+| `DELETE` | `/api/docker/hosts/:id` | Delete Docker host |
+| `POST` | `/api/docker/hosts/:id/update` | Update all projects on host |
+| `GET` | `/api/docker/hosts/:id/update-stream` | SSE progress stream |
+| `POST` | `/api/docker/hosts/:id/discover` | Scan host for Compose files |
 
 ### Docker Projects
-- `GET /api/docker/projects` - List all Docker projects
-- `POST /api/docker/projects` - Add Docker project
-- `PUT /api/docker/projects/:id` - Update Docker project
-- `DELETE /api/docker/projects/:id` - Delete Docker project
-- `POST /api/docker/projects/:id/update` - Update specific project
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/docker/projects` | List all projects |
+| `POST` | `/api/docker/projects` | Add project |
+| `PUT` | `/api/docker/projects/:id` | Edit project |
+| `DELETE` | `/api/docker/projects/:id` | Delete project |
+| `POST` | `/api/docker/projects/:id/update` | Update project |
+| `GET` | `/api/docker/projects/:id/update-stream` | SSE progress stream |
 
 ### Docker Groups
-- `GET /api/docker/groups` - List all Docker groups
-- `POST /api/docker/groups` - Create Docker group
-- `PUT /api/docker/groups/:id` - Update Docker group
-- `DELETE /api/docker/groups/:id` - Delete Docker group
-- `POST /api/docker/groups/:id/update` - Update all hosts in group
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/docker/groups` | List all Docker groups |
+| `POST` | `/api/docker/groups` | Create Docker group |
+| `PUT` | `/api/docker/groups/:id` | Edit Docker group |
+| `DELETE` | `/api/docker/groups/:id` | Delete Docker group |
+| `POST` | `/api/docker/groups/:id/update` | Update all hosts in group |
+| `GET` | `/api/docker/groups/:id/update-stream` | SSE progress stream |
 
-### Logs
-- `GET /api/logs` - Get update logs (with pagination and filters)
-- `GET /api/schedule-status` - Check auto-update schedule status
+### Credentials
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/credentials` | List credentials (no secrets) |
+| `POST` | `/api/credentials` | Add credential |
+| `DELETE` | `/api/credentials/:id` | Delete credential |
+
+### NetBox
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/netbox/vms` | List NetBox VMs (server import) |
+| `POST` | `/api/netbox/import` | Bulk-import servers from NetBox |
+| `GET` | `/api/netbox/docker-vms` | List NetBox VMs (Docker host import) |
+| `POST` | `/api/netbox/docker-import` | Bulk-import Docker hosts from NetBox |
+
+### Other
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/logs` | Update logs (paginated, filterable) |
+| `GET` | `/api/dashboard` | Dashboard summary data |
+| `GET` | `/api/activity-stream` | SSE stream for scheduled update progress |
+| `GET` | `/api/webhooks` | List webhooks |
+| `POST` | `/api/webhooks` | Add webhook |
+| `DELETE` | `/api/webhooks/:id` | Delete webhook |
 
 ## Security Notes
 
 - **Firewall**: Restrict access to port 3000 to trusted IPs only
 - **Reverse Proxy**: Use Nginx/Apache with SSL in production
-- **SSH Keys**: Ensure proper permissions (chmod 600) on uploaded keys
-- **Credentials**: Encrypted — encryption key stored in `./data/`
-- **Backups**: Regular backups of ./data directory are essential
-- **Updates**: Keep Docker and the host system updated
-
-## Environment Variables
-
-Configured in `docker-compose.yml`:
-- `NODE_ENV=production` - Application environment
-- `PORT=3000` - Server port
-- `TZ=Europe/Amsterdam` - Timezone for scheduling
+- **Encryption Key**: Back up `./data/encryption.key` — losing it means stored credentials cannot be decrypted
+- **SSH Keys**: Ensure proper file permissions (`chmod 600`) on uploaded keys
+- **NetBox Token**: Store the token only in `docker-compose.yml`; do not commit it to version control
+- **Backups**: Regularly back up the `./data/` directory
 
 ## Directory Structure
 
 ```
 update-manager/
-├── server.js              # Main application server
-├── package.json           # Node.js dependencies
-├── package-lock.json      # Locked dependency versions
-├── Dockerfile             # Docker image configuration
-├── docker-compose.yml     # Docker Compose configuration
-├── .dockerignore          # Files to exclude from Docker build
-├── public/                # Frontend files
-│   ├── index.html        # Main UI
-│   └── script.js         # Frontend JavaScript
-├── data/                  # SQLite database (created at runtime)
-├── ssh-keys/             # Uploaded SSH keys (created at runtime)
-├── logs/                 # Application logs (created at runtime)
-├── INSTALL.md            # Production installation guide
-└── README.md             # This file
+├── server.js              # Express application entry point
+├── db/
+│   └── index.js           # SQLite setup and migrations
+├── routes/
+│   ├── servers.js         # Server CRUD + update + SSE
+│   ├── groups.js          # Server group CRUD + update + SSE
+│   ├── docker.js          # Docker host/project/group routes + discover
+│   ├── credentials.js     # Credential vault routes
+│   ├── netbox.js          # NetBox import routes
+│   ├── webhooks.js        # Webhook routes
+│   ├── logs.js            # Update log routes
+│   └── dashboard.js       # Dashboard summary route
+├── services/
+│   ├── ssh.js             # SSH connection helpers
+│   ├── update.js          # Server update logic + logUpdate
+│   ├── docker.js          # Docker update logic
+│   ├── scheduler.js       # node-cron auto-update scheduler
+│   ├── activity.js        # Global SSE activity broadcast
+│   ├── netbox.js          # NetBox API client
+│   └── notifications.js   # Webhook dispatch
+├── utils/
+│   └── crypto.js          # AES-256-GCM encrypt/decrypt
+├── public/
+│   ├── index.html         # Single-page UI
+│   └── script.js          # Frontend logic
+├── data/                  # SQLite database + encryption key (runtime)
+├── ssh-keys/              # Uploaded SSH keys (runtime)
+├── logs/                  # Application logs (runtime)
+├── Dockerfile
+├── docker-compose.yml
+├── INSTALL.md
+└── README.md
 ```
 
 ## Scheduled Updates
 
-The auto-update scheduler runs every minute and checks if any groups are due for updates based on their configured schedule. Updates are considered due when:
+The scheduler checks every minute whether any group is due for an update based on:
 
 1. Current time is past the configured start date
-2. Enough time has elapsed since the last update (based on interval)
-3. The group has auto-update configured
+2. Enough time has elapsed since the last update (based on the configured interval)
+3. The group has an interval and interval unit configured
+
+When a scheduled update fires, the live **Activity Panel** (bottom-right) appears in all connected browsers showing real-time progress. Logs and the dashboard refresh automatically when it completes.
 
 ## Credits
 
 Built with assistance from Claude Code AI.
-
-## Version
-
-1.0.0 - Production Release
 
 ## License
 

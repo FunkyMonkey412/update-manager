@@ -16,6 +16,9 @@ services:
       # Optional: set a fixed AES-256 encryption key (64 hex chars).
       # If unset, a key is auto-generated and stored in ./data/encryption.key
       # - ENCRYPTION_KEY=
+      # NetBox integration (required for VM import feature)
+      # - NETBOX_URL=https://netbox.example.com
+      # - NETBOX_TOKEN=your_api_token_here
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
