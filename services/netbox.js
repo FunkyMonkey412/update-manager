@@ -3,15 +3,28 @@ const { URL } = require('url');
 
 const REQUIRED_TAG = 'update-manager';
 
-function isConfigured() {
-    return !!(process.env.NETBOX_URL && process.env.NETBOX_TOKEN);
+async function getConfig() {
+    const { dbGet } = require('../db');
+    const { decrypt } = require('../utils/crypto');
+    const urlRow   = await dbGet("SELECT value FROM plugin_settings WHERE key = 'netbox_url'");
+    const tokenRow = await dbGet("SELECT value FROM plugin_settings WHERE key = 'netbox_token'");
+    const url   = urlRow?.value   || process.env.NETBOX_URL   || null;
+    const token = tokenRow?.value ? decrypt(tokenRow.value)
+                                  : (process.env.NETBOX_TOKEN || null);
+    return { url, token };
 }
 
-function netboxRequest(path) {
+async function isConfigured() {
+    const { url, token } = await getConfig();
+    return !!(url && token);
+}
+
+async function netboxRequest(path, overrideConfig) {
+    const { url: baseUrl, token } = overrideConfig || await getConfig();
     return new Promise((resolve, reject) => {
         let parsed;
-        try { parsed = new URL(process.env.NETBOX_URL + path); } catch (e) {
-            return reject(new Error('Invalid NETBOX_URL: ' + e.message));
+        try { parsed = new URL(baseUrl + path); } catch (e) {
+            return reject(new Error('Invalid NetBox URL: ' + e.message));
         }
 
         const options = {
@@ -20,7 +33,7 @@ function netboxRequest(path) {
             path: parsed.pathname + parsed.search,
             method: 'GET',
             headers: {
-                'Authorization': `Token ${process.env.NETBOX_TOKEN}`,
+                'Authorization': `Token ${token}`,
                 'Accept': 'application/json'
             },
             rejectUnauthorized: false,
@@ -75,4 +88,4 @@ async function getVM(id) {
     return mapVm(vm);
 }
 
-module.exports = { isConfigured, getVMs, getVM };
+module.exports = { isConfigured, getConfig, netboxRequest, getVMs, getVM };

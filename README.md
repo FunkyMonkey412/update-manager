@@ -76,8 +76,8 @@ Set in `docker-compose.yml`:
 | `TZ` | `Europe/Amsterdam` | Timezone for scheduling and log display |
 | `NODE_ENV` | `production` | Node environment |
 | `ENCRYPTION_KEY` | *(auto-generated)* | 64-char hex AES-256 key. If unset, a key is generated and saved to `./data/encryption.key` |
-| `NETBOX_URL` | *(unset)* | Base URL of your NetBox instance, e.g. `https://netbox.example.com` |
-| `NETBOX_TOKEN` | *(unset)* | NetBox API token. Both variables must be set to enable the import feature |
+| `NETBOX_URL` | *(unset)* | *(Legacy)* NetBox base URL. Prefer configuring via **Plugins → NetBox** in the UI |
+| `NETBOX_TOKEN` | *(unset)* | *(Legacy)* NetBox API token. Prefer configuring via **Plugins → NetBox** in the UI |
 
 ### Credential Vault
 
@@ -114,7 +114,11 @@ On any Docker host card, click **Discover Projects** to scan the host's filesyst
 
 ### NetBox Integration
 
-Set `NETBOX_URL` and `NETBOX_TOKEN` in `docker-compose.yml`, then use the **Import from NetBox** button on the Servers or Docker Hosts tab to select VMs from your NetBox inventory and import them in bulk. Already-imported IPs are shown as greyed out.
+Go to **Plugins → NetBox** in the sidebar and enter your NetBox URL and a v1 API token (read-only is sufficient). Click **Test Connection** to verify, then **Save**. The token is stored encrypted in the database — no container restart required.
+
+Once configured, use the **Import from NetBox** button on the Servers or Docker Hosts tabs to browse your NetBox VM inventory and import them in bulk. VMs must have the `update-manager` tag and a primary IP set in NetBox. Already-imported IPs are shown as greyed out.
+
+> **Legacy:** You can still set `NETBOX_URL` and `NETBOX_TOKEN` environment variables in `docker-compose.yml`. The UI-configured values take precedence.
 
 ### Persistent Data
 
@@ -206,6 +210,9 @@ Data survives container restarts and image updates.
 | `POST` | `/api/netbox/import` | Bulk-import servers from NetBox |
 | `GET` | `/api/netbox/docker-vms` | List NetBox VMs (Docker host import) |
 | `POST` | `/api/netbox/docker-import` | Bulk-import Docker hosts from NetBox |
+| `GET` | `/api/netbox/config` | Get stored NetBox URL and token status |
+| `POST` | `/api/netbox/config` | Save NetBox URL and/or token |
+| `POST` | `/api/netbox/test-connection` | Test NetBox connectivity |
 
 ### Other
 | Method | Path | Description |
@@ -223,7 +230,7 @@ Data survives container restarts and image updates.
 - **Reverse Proxy**: Use Nginx/Apache with SSL in production
 - **Encryption Key**: Back up `./data/encryption.key` — losing it means stored credentials cannot be decrypted
 - **SSH Keys**: Ensure proper file permissions (`chmod 600`) on uploaded keys
-- **NetBox Token**: Store the token only in `docker-compose.yml`; do not commit it to version control
+- **NetBox Token**: Configure via **Plugins → NetBox** in the UI — the token is encrypted with AES-256-GCM and stored in the database. If using env vars instead, do not commit them to version control
 - **Backups**: Regularly back up the `./data/` directory
 
 ## Directory Structure

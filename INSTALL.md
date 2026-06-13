@@ -32,10 +32,10 @@ environment:
   # If unset, a key is auto-generated and saved to ./data/encryption.key.
   # - ENCRYPTION_KEY=<64 hex chars>
 
-  # Optional: NetBox integration — enables "Import from NetBox" on
-  # the Servers and Docker Hosts tabs. Both variables must be set.
+  # Optional (legacy): NetBox integration via environment variables.
+  # Prefer configuring NetBox via the UI instead: Plugins → NetBox.
   # - NETBOX_URL=https://netbox.example.com
-  # - NETBOX_TOKEN=your_api_token_here
+  # - NETBOX_TOKEN=your_v1_api_token_here
 ```
 
 ## Data
@@ -53,7 +53,7 @@ All persistent data is stored in bind-mounted directories next to `docker-compos
 ## First-time setup
 
 1. Open the UI and go to the **Credentials** tab to add reusable SSH credentials (optional but recommended)
-2. Add servers under the **Servers** tab, or use **Import from NetBox** if NetBox is configured
+2. Add servers under the **Servers** tab, or configure NetBox via **Plugins → NetBox** and use **Import from NetBox** for bulk import
 3. Add Docker hosts under the **Docker Hosts** tab in the same way
 4. Create **Groups** / **Docker Groups** and assign servers/hosts to them
 5. Configure a schedule on each group to enable automatic updates

@@ -140,6 +140,17 @@ const MIGRATIONS = [
         `
     },
     {
+        id: 5,
+        name: 'plugin_settings',
+        sql: `
+            CREATE TABLE IF NOT EXISTS plugin_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        `
+    },
+    {
         id: 2,
         name: 'add_missing_columns',
         sql: `

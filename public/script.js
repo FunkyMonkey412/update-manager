@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadLogs();
     loadCredentials();
     loadWebhooks();
+    loadNetboxConfig();
 
     initActivityStream();
 
@@ -1425,6 +1426,72 @@ async function deleteWebhook(id) {
     } catch { showError('Failed to delete webhook'); }
 }
 
+// ── NetBox Plugin Settings ────────────────────────────────────────────────────
+
+async function loadNetboxConfig() {
+    try {
+        const res = await fetch('/api/netbox/config');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.url) document.getElementById('netbox-config-url').value = data.url;
+        if (data.token_set) document.getElementById('netbox-config-token').placeholder = 'Token is set — leave blank to keep';
+    } catch {}
+}
+
+async function saveNetboxConfig() {
+    const url   = document.getElementById('netbox-config-url').value.trim();
+    const token = document.getElementById('netbox-config-token').value.trim();
+    if (!url) { _netboxConfigStatus('error', 'NetBox URL is required'); return; }
+    try {
+        const body = { url };
+        if (token) body.token = token;
+        const res = await fetch('/api/netbox/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            _netboxConfigStatus('success', 'Configuration saved');
+            document.getElementById('netbox-config-token').value = '';
+            document.getElementById('netbox-config-token').placeholder = 'Token is set — leave blank to keep';
+        } else {
+            _netboxConfigStatus('error', data.error || 'Failed to save');
+        }
+    } catch { _netboxConfigStatus('error', 'Request failed'); }
+}
+
+async function testNetboxConnection() {
+    _netboxConfigStatus('info', 'Testing connection…');
+    const url   = document.getElementById('netbox-config-url').value.trim();
+    const token = document.getElementById('netbox-config-token').value.trim();
+    try {
+        const body = {};
+        if (url) body.url = url;
+        if (token) body.token = token;
+        const res = await fetch('/api/netbox/test-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        _netboxConfigStatus(data.success ? 'success' : 'error', data.message);
+    } catch { _netboxConfigStatus('error', 'Test request failed'); }
+}
+
+function _netboxConfigStatus(type, message) {
+    const el = document.getElementById('netbox-config-status');
+    if (!el) return;
+    const styles = {
+        success: 'bg-green-900/30 border-green-700/50 text-green-300',
+        error:   'bg-red-900/30 border-red-700/50 text-red-300',
+        info:    'bg-blue-900/30 border-blue-700/50 text-blue-300'
+    };
+    el.className = `p-3 rounded-lg border text-sm ${styles[type] || styles.info}`;
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
 // ── Add modals ────────────────────────────────────────────────────────────────
 
 function openAddServerModal() {
@@ -1568,8 +1635,7 @@ async function fetchNetboxVMs() {
             document.getElementById('netbox-vm-list').classList.remove('hidden');
             document.getElementById('netbox-vm-table').innerHTML = `
                 <div class="p-4 text-sm text-amber-400 bg-amber-900/20 border border-amber-700/40 rounded-lg">
-                    NetBox is not configured. Add <code class="bg-slate-700 px-1 rounded">NETBOX_URL</code> and
-                    <code class="bg-slate-700 px-1 rounded">NETBOX_TOKEN</code> environment variables and restart the container.
+                    NetBox is not configured. Go to <strong>Plugins → NetBox</strong> to set your URL and API token.
                 </div>`;
             btn.disabled = false;
             return;
@@ -1922,8 +1988,7 @@ async function fetchNetboxDockerVMs() {
             document.getElementById('netbox-docker-vm-list').classList.remove('hidden');
             document.getElementById('netbox-docker-vm-table').innerHTML = `
                 <div class="p-4 text-sm text-amber-400 bg-amber-900/20 border border-amber-700/40 rounded-lg">
-                    NetBox is not configured. Add <code class="bg-slate-700 px-1 rounded">NETBOX_URL</code> and
-                    <code class="bg-slate-700 px-1 rounded">NETBOX_TOKEN</code> environment variables and restart the container.
+                    NetBox is not configured. Go to <strong>Plugins → NetBox</strong> to set your URL and API token.
                 </div>`;
             btn.disabled = false;
             return;

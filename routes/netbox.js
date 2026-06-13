@@ -1,12 +1,12 @@
 const express = require('express');
 const { dbAll, dbGet, dbRun } = require('../db');
-const { encrypt } = require('../utils/crypto');
-const { isConfigured, getVMs, getVM } = require('../services/netbox');
+const { encrypt, decrypt } = require('../utils/crypto');
+const { isConfigured, getConfig, netboxRequest, getVMs, getVM } = require('../services/netbox');
 
 const router = express.Router();
 
 router.get('/vms', async (req, res) => {
-    if (!isConfigured()) {
+    if (!await isConfigured()) {
         return res.json({ configured: false, vms: [] });
     }
     try {
@@ -24,7 +24,7 @@ router.get('/vms', async (req, res) => {
 });
 
 router.post('/import', async (req, res) => {
-    if (!isConfigured()) {
+    if (!await isConfigured()) {
         return res.status(503).json({ error: 'NetBox is not configured (NETBOX_URL / NETBOX_TOKEN missing)' });
     }
 
@@ -83,7 +83,7 @@ router.post('/import', async (req, res) => {
 });
 
 router.get('/docker-vms', async (req, res) => {
-    if (!isConfigured()) {
+    if (!await isConfigured()) {
         return res.json({ configured: false, vms: [] });
     }
     try {
@@ -101,7 +101,7 @@ router.get('/docker-vms', async (req, res) => {
 });
 
 router.post('/docker-import', async (req, res) => {
-    if (!isConfigured()) {
+    if (!await isConfigured()) {
         return res.status(503).json({ error: 'NetBox is not configured (NETBOX_URL / NETBOX_TOKEN missing)' });
     }
 
@@ -157,6 +157,57 @@ router.post('/docker-import', async (req, res) => {
     }
 
     res.json({ imported, skipped });
+});
+
+router.get('/config', async (req, res) => {
+    try {
+        const urlRow   = await dbGet("SELECT value FROM plugin_settings WHERE key = 'netbox_url'");
+        const tokenRow = await dbGet("SELECT value FROM plugin_settings WHERE key = 'netbox_token'");
+        const url = urlRow?.value || process.env.NETBOX_URL || null;
+        const token_set = !!(tokenRow?.value || process.env.NETBOX_TOKEN);
+        res.json({ url, token_set });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/config', async (req, res) => {
+    const { url, token } = req.body;
+    if (!url) return res.status(400).json({ error: 'url is required' });
+    try { new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
+    try {
+        await dbRun(
+            "INSERT OR REPLACE INTO plugin_settings (key, value, updated_at) VALUES ('netbox_url', ?, CURRENT_TIMESTAMP)",
+            [url]
+        );
+        if (token && token.trim()) {
+            await dbRun(
+                "INSERT OR REPLACE INTO plugin_settings (key, value, updated_at) VALUES ('netbox_token', ?, CURRENT_TIMESTAMP)",
+                [encrypt(token.trim())]
+            );
+        }
+        res.json({ message: 'NetBox configuration saved' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/test-connection', async (req, res) => {
+    try {
+        let { url, token } = req.body || {};
+        if (!url || !token) {
+            const stored = await getConfig();
+            url = url || stored.url;
+            token = token || stored.token;
+        }
+        if (!url || !token) {
+            return res.status(400).json({ success: false, message: 'NetBox is not configured — enter a URL and token first' });
+        }
+        const data = await netboxRequest('/api/virtualization/virtual-machines/?limit=1', { url, token });
+        res.json({ success: true, message: `Connected to NetBox (${data.count} VMs found)` });
+    } catch (err) {
+        res.status(502).json({ success: false, message: `Failed to reach NetBox: ${err.message}` });
+    }
 });
 
 module.exports = router;
