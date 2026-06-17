@@ -74,7 +74,7 @@ public/script.js     ~2100 lines of vanilla JS; tab system, forms, SSE listeners
 
 **Encryption:** `utils/crypto.js` — `encrypt(plaintext)` returns `'aes:' + base64(iv+tag+ciphertext)`. Passwords, sudo passwords, SSH key material, and the NetBox token are all encrypted before DB storage. Key lives at `data/encryption.key` or `ENCRYPTION_KEY` env var.
 
-**Migrations:** Add objects to the `MIGRATIONS` array in `db/index.js` with a unique `id`, `name`, and `sql`. The runner splits on `;` and silently ignores `duplicate column` / `already exists` errors for idempotency. Current highest migration id: **6** (`add_os_type_to_servers`).
+**Migrations:** Add objects to the `MIGRATIONS` array in `db/index.js` with a unique `id`, `name`, and `sql`. The runner splits on `;` and silently ignores `duplicate column` / `already exists` errors for idempotency. Current highest migration id: **7** (`add_truenas_connection_settings`).
 
 **Error responses:** Always `{ error: string }` with a meaningful HTTP status. 502 for upstream failures (SSH unreachable, NetBox timeout).
 
@@ -112,7 +112,7 @@ Environment variables in `docker-compose.yml`:
 
 - Server CRUD + SSH test + manual update + reboot + status tracking
 - **OS type per server** (`os_type` column: `debian` or `truenas_ce`) — selectable in Add/Edit server forms; shown as badge on server cards
-- **TrueNAS CE (SCALE) update support** — uses TrueNAS REST API (`/api/v2.0/update/*`), not SSH/midclt; download + apply flow with live progress; sets reboot-required flag after apply
+- **TrueNAS CE (SCALE) update support** — uses TrueNAS REST API (`/api/v2.0/update/*`), not SSH/midclt; download + apply flow with live progress; sets reboot-required flag after apply; per-server protocol (HTTP/HTTPS) and SSL verification settings
 - Server groups with flexible auto-update schedules (hours/days/weeks/months) + auto-reboot
 - Docker host CRUD + project discovery + manual update per project/host/group
 - Docker groups with auto-update schedules
@@ -138,13 +138,16 @@ Environment variables in `docker-compose.yml`:
 - NetBox import (servers + Docker hosts)
 - **Plugins → NetBox settings page** — users can configure NetBox URL and API token in the UI (stored encrypted in `plugin_settings` table); no container restart needed. Test Connection works with unsaved form values too.
 - **TrueNAS CE (SCALE) update support** — `os_type` field on servers; REST API-based update flow (`/update/status` → `/update/download` → `/update/run`); live SSE progress with download %; reboot-required flag set after apply.
+- **TrueNAS CE per-server connection settings** — protocol (HTTP/HTTPS) and SSL verification (checkbox) stored in `truenas_protocol` + `truenas_verify_ssl` columns (migration #7); fields appear only when TrueNAS CE OS type is selected; SSL verify field hides when HTTP is chosen.
 
 ### TrueNAS CE notes
 
-- Update uses the TrueNAS REST API on port 80 — **password auth required** (SSH key auth is not used for the update flow)
-- `update.download` stages the image; `update.run` applies it and triggers a reboot
+- Update uses the TrueNAS REST API — **password auth required** (SSH key auth is not used for the update flow)
+- Default: HTTPS port 443, SSL verification off (self-signed cert friendly)
+- `update.download` stages the image; `update.run` applies it; system reboots automatically
 - After `update.run` completes the server card shows "⚠ Reboot recommended" — use the Reboot button to finalise
 - Tested against TrueNAS SCALE 25.10.x (Goldeye train)
+- Highest migration id: **7** (`add_truenas_connection_settings`)
 
 ### In progress / next
 

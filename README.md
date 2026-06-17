@@ -20,7 +20,9 @@ A web-based tool for managing Ubuntu/Debian and TrueNAS CE (SCALE) server update
 - Updates are applied via the TrueNAS REST API — no SSH commands or `midclt` required
 - Live progress during download and installation is shown in the same progress modal
 - After the update is applied the server card shows a reboot-required warning; use the Reboot button to activate the new version
-- Requires password authentication (HTTP Basic auth to the TrueNAS API on port 80)
+- Requires password authentication (HTTP Basic auth to the TrueNAS API)
+- **Protocol**: choose HTTP or HTTPS per server (default: HTTPS port 443)
+- **SSL verification**: optional — disable for self-signed certificates (default); enable when a valid cert is installed
 
 ### Docker Management
 - **Docker Compose Updates**: Pull latest images and recreate containers automatically

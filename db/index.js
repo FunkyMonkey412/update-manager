@@ -167,6 +167,12 @@ const MIGRATIONS = [
         id: 6,
         name: 'add_os_type_to_servers',
         sql: `ALTER TABLE servers ADD COLUMN os_type TEXT NOT NULL DEFAULT 'debian'`
+    },
+    {
+        id: 7,
+        name: 'add_truenas_connection_settings',
+        sql: `ALTER TABLE servers ADD COLUMN truenas_protocol TEXT NOT NULL DEFAULT 'https';
+              ALTER TABLE servers ADD COLUMN truenas_verify_ssl BOOLEAN NOT NULL DEFAULT 0`
     }
 ];
 

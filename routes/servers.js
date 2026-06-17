@@ -51,10 +51,12 @@ router.post('/test-connection', async (req, res) => {
 });
 
 router.post('/', upload.single('ssh_key'), async (req, res) => {
-    const { name, ip_address, port, username, auth_type, password, sudo_password, group_id, credential_id, os_type } = req.body;
+    const { name, ip_address, port, username, auth_type, password, sudo_password, group_id, credential_id, os_type, truenas_protocol, truenas_verify_ssl } = req.body;
     const sudo_hash = sudo_password ? encrypt(sudo_password) : null;
     const cred_id = credential_id || null;
     const osType = os_type || 'debian';
+    const tnProtocol = osType === 'truenas_ce' ? (truenas_protocol || 'https') : 'https';
+    const tnVerifySSL = osType === 'truenas_ce' ? (truenas_verify_ssl === '1' ? 1 : 0) : 0;
 
     let effective_username = username;
     let effective_auth_type = auth_type;
@@ -73,16 +75,16 @@ router.post('/', upload.single('ssh_key'), async (req, res) => {
         }
 
         const result = await dbRun(
-            `INSERT INTO servers (name, ip_address, port, username, auth_type, password_hash, ssh_key_path, sudo_password_hash, group_id, credential_id, os_type)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, ip_address, port || 22, effective_username, effective_auth_type, password_hash, ssh_key_path, sudo_hash, group_id || null, cred_id, osType]
+            `INSERT INTO servers (name, ip_address, port, username, auth_type, password_hash, ssh_key_path, sudo_password_hash, group_id, credential_id, os_type, truenas_protocol, truenas_verify_ssl)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [name, ip_address, port || 22, effective_username, effective_auth_type, password_hash, ssh_key_path, sudo_hash, group_id || null, cred_id, osType, tnProtocol, tnVerifySSL]
         );
         res.json({ id: result.lastID, name, ip_address, port: port || 22, username: effective_username, auth_type: effective_auth_type, os_type: osType });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/:id', upload.single('ssh_key'), async (req, res) => {
-    const { name, ip_address, port, username, auth_type, password, sudo_password, group_id, credential_id, os_type } = req.body;
+    const { name, ip_address, port, username, auth_type, password, sudo_password, group_id, credential_id, os_type, truenas_protocol, truenas_verify_ssl } = req.body;
     try {
         const current = await dbGet('SELECT * FROM servers WHERE id = ?', [req.params.id]);
         if (!current) return res.status(404).json({ error: 'Server not found' });
@@ -111,11 +113,13 @@ router.put('/:id', upload.single('ssh_key'), async (req, res) => {
         if (sudo_password) sudo_hash = encrypt(sudo_password);
 
         const osType = os_type || current.os_type || 'debian';
+        const tnProtocol = osType === 'truenas_ce' ? (truenas_protocol || current.truenas_protocol || 'https') : 'https';
+        const tnVerifySSL = osType === 'truenas_ce' ? (truenas_verify_ssl === '1' ? 1 : 0) : 0;
         await dbRun(
             `UPDATE servers SET name=?, ip_address=?, port=?, username=?, auth_type=?, password_hash=?,
-             ssh_key_path=?, sudo_password_hash=?, group_id=?, credential_id=?, os_type=? WHERE id=?`,
+             ssh_key_path=?, sudo_password_hash=?, group_id=?, credential_id=?, os_type=?, truenas_protocol=?, truenas_verify_ssl=? WHERE id=?`,
             [name, ip_address, port || 22, effective_username, effective_auth_type, password_hash, ssh_key_path, sudo_hash,
-             group_id || null, cred_id, osType, req.params.id]
+             group_id || null, cred_id, osType, tnProtocol, tnVerifySSL, req.params.id]
         );
         res.json({ id: req.params.id, name, ip_address, port: port || 22, username: effective_username, auth_type: effective_auth_type, os_type: osType });
     } catch (err) { res.status(500).json({ error: err.message }); }

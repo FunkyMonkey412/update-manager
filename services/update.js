@@ -2,6 +2,8 @@ const { dbRun, dbGet } = require('../db');
 const { connectToServer, makeSudoExec } = require('./ssh');
 const { decrypt } = require('../utils/crypto');
 const { notifyUpdate } = require('./notifications');
+const http  = require('http');
+const https = require('https');
 
 async function logUpdate(entity_type, entity_id, entity_name, update_type, success, message, details = null) {
     try {
@@ -31,23 +33,42 @@ async function updateServerTrueNAS(server, progressCallback = null, updateType =
     }
     if (!password) throw new Error('A password is required for TrueNAS CE updates');
 
-    const baseUrl = `http://${server.ip_address}/api/v2.0`;
+    const protocol  = server.truenas_protocol || 'https';
+    const verifySSL = !!server.truenas_verify_ssl;
+    const httpModule = protocol === 'https' ? https : http;
+    const agent = protocol === 'https' ? new https.Agent({ rejectUnauthorized: verifySSL }) : undefined;
+    const port  = protocol === 'https' ? 443 : 80;
+
     const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
 
-    const apiGet = async (path) => {
-        const res = await fetch(`${baseUrl}${path}`, { headers: { Authorization: authHeader } });
-        if (!res.ok) throw new Error(`TrueNAS API ${res.status}: ${await res.text()}`);
-        return res.json();
-    };
-    const apiPost = async (path, body = {}) => {
-        const res = await fetch(`${baseUrl}${path}`, {
-            method: 'POST',
-            headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+    const apiRequest = (method, path, body = null) => new Promise((resolve, reject) => {
+        const payload = body !== null ? JSON.stringify(body) : null;
+        const req = httpModule.request({
+            hostname: server.ip_address,
+            port,
+            path: `/api/v2.0${path}`,
+            method,
+            ...(agent ? { agent } : {}),
+            headers: {
+                Authorization: authHeader,
+                'Content-Type': 'application/json',
+                ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {})
+            }
+        }, res => {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => {
+                if (res.statusCode >= 400) return reject(new Error(`TrueNAS API ${res.statusCode}: ${data}`));
+                try { resolve(JSON.parse(data)); } catch { resolve(data); }
+            });
         });
-        if (!res.ok) throw new Error(`TrueNAS API ${res.status}: ${await res.text()}`);
-        return res.json();
-    };
+        req.on('error', reject);
+        if (payload) req.write(payload);
+        req.end();
+    });
+
+    const apiGet = path => apiRequest('GET', path);
+    const apiPost = (path, body = {}) => apiRequest('POST', path, body);
     const pollJob = async (jobId, onProgress) => {
         while (true) {
             await new Promise(r => setTimeout(r, 5000));

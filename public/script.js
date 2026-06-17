@@ -126,6 +126,22 @@ function toggleDockerAuthFields()     { toggleAuthFields('docker'); }
 function toggleEditAuthFields()       { toggleAuthFields('edit'); }
 function toggleEditDockerAuthFields() { toggleAuthFields('edit-docker'); }
 
+function togglePortField(prefix) {
+    const osType = document.getElementById(prefix === 'edit' ? 'edit-server-os-type' : 'server-os-type')?.value;
+    const isTrueNAS = osType === 'truenas_ce';
+    const portField = document.getElementById(prefix === 'edit' ? 'edit-server-port-field' : 'add-server-port-field');
+    if (portField) portField.classList.toggle('hidden', isTrueNAS);
+    const tnOptions = document.getElementById(prefix === 'edit' ? 'edit-server-truenas-options' : 'add-server-truenas-options');
+    if (tnOptions) tnOptions.classList.toggle('hidden', !isTrueNAS);
+    toggleTrueNASSSLField(prefix);
+}
+
+function toggleTrueNASSSLField(prefix) {
+    const proto = document.getElementById(prefix === 'edit' ? 'edit-server-truenas-protocol' : 'server-truenas-protocol')?.value;
+    const sslField = document.getElementById(prefix === 'edit' ? 'edit-server-truenas-ssl-verify' : 'add-server-truenas-ssl-verify');
+    if (sslField) sslField.classList.toggle('hidden', proto !== 'https');
+}
+
 // ── Status helpers ────────────────────────────────────────────────────────────
 function getStatusColor(status) {
     return { online: 'bg-green-500', offline: 'bg-red-500', updating: 'bg-yellow-500',
@@ -322,6 +338,9 @@ function editServer(serverId) {
     document.getElementById('edit-server-ip').value = server.ip_address;
     document.getElementById('edit-server-port').value = server.port;
     document.getElementById('edit-server-os-type').value = server.os_type || 'debian';
+    document.getElementById('edit-server-truenas-protocol').value = server.truenas_protocol || 'https';
+    document.getElementById('edit-server-truenas-verify-ssl').checked = !!server.truenas_verify_ssl;
+    togglePortField('edit');
     document.getElementById('edit-server-username').value = server.username;
     document.getElementById('edit-auth-type').value = server.auth_type;
     loadGroupsForEditSelect();

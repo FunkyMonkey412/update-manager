@@ -233,16 +233,33 @@
                     </div>
 
                     <div>
-                        <label for="server-port" class="block text-sm font-medium text-slate-300 mb-2">Port</label>
-                        <input type="number" id="server-port" name="port" value="22" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
-                    </div>
-
-                    <div>
                         <label for="server-os-type" class="block text-sm font-medium text-slate-300 mb-2">OS Type</label>
-                        <select id="server-os-type" name="os_type" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                        <select id="server-os-type" name="os_type" onchange="togglePortField('add')" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                             <option value="debian">Debian / Ubuntu</option>
                             <option value="truenas_ce">TrueNAS CE (SCALE)</option>
                         </select>
+                    </div>
+
+                    <div id="add-server-truenas-options" class="hidden space-y-4">
+                        <div>
+                            <label for="server-truenas-protocol" class="block text-sm font-medium text-slate-300 mb-2">Protocol</label>
+                            <select id="server-truenas-protocol" name="truenas_protocol" onchange="toggleTrueNASSSLField('add')" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                                <option value="https">HTTPS (port 443)</option>
+                                <option value="http">HTTP (port 80)</option>
+                            </select>
+                        </div>
+                        <div id="add-server-truenas-ssl-verify">
+                            <label class="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" id="server-truenas-verify-ssl" name="truenas_verify_ssl" value="1" class="w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500">
+                                <span class="text-sm font-medium text-slate-300">Verify SSL certificate</span>
+                            </label>
+                            <p class="mt-1 text-xs text-slate-400">Leave unchecked for self-signed certificates (default for TrueNAS).</p>
+                        </div>
+                    </div>
+
+                    <div id="add-server-port-field">
+                        <label for="server-port" class="block text-sm font-medium text-slate-300 mb-2">Port</label>
+                        <input type="number" id="server-port" name="port" value="22" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                     </div>
 
                     <div>
@@ -897,16 +914,33 @@
                 </div>
 
                 <div>
-                    <label for="edit-server-port" class="block text-sm font-medium text-slate-300 mb-2">Port</label>
-                    <input type="number" id="edit-server-port" name="port" value="22" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
-                </div>
-
-                <div>
                     <label for="edit-server-os-type" class="block text-sm font-medium text-slate-300 mb-2">OS Type</label>
-                    <select id="edit-server-os-type" name="os_type" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                    <select id="edit-server-os-type" name="os_type" onchange="togglePortField('edit')" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                         <option value="debian">Debian / Ubuntu</option>
                         <option value="truenas_ce">TrueNAS CE (SCALE)</option>
                     </select>
+                </div>
+
+                <div id="edit-server-truenas-options" class="hidden space-y-4">
+                    <div>
+                        <label for="edit-server-truenas-protocol" class="block text-sm font-medium text-slate-300 mb-2">Protocol</label>
+                        <select id="edit-server-truenas-protocol" name="truenas_protocol" onchange="toggleTrueNASSSLField('edit')" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                            <option value="https">HTTPS (port 443)</option>
+                            <option value="http">HTTP (port 80)</option>
+                        </select>
+                    </div>
+                    <div id="edit-server-truenas-ssl-verify">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" id="edit-server-truenas-verify-ssl" name="truenas_verify_ssl" value="1" class="w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500">
+                            <span class="text-sm font-medium text-slate-300">Verify SSL certificate</span>
+                        </label>
+                        <p class="mt-1 text-xs text-slate-400">Leave unchecked for self-signed certificates (default for TrueNAS).</p>
+                    </div>
+                </div>
+
+                <div id="edit-server-port-field">
+                    <label for="edit-server-port" class="block text-sm font-medium text-slate-300 mb-2">Port</label>
+                    <input type="number" id="edit-server-port" name="port" value="22" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                 </div>
 
                 <div>
