@@ -55,14 +55,6 @@ This tool is designed for a trusted home network — there's no login screen by 
 | `./ssh-keys/` | Uploaded SSH private keys |
 | `./logs/` | Application logs |
 
-## Credits
-
-Built with assistance from Claude Code AI.
-
-## License
-
-Proprietary - All rights reserved
-
 ---
 
 ## For the geeks: API reference

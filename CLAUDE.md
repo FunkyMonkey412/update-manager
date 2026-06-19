@@ -129,7 +129,7 @@ Environment variables in `docker-compose.yml`:
 
 ## Current status
 
-### Done (as of 2026-06-18)
+### Done (as of 2026-06-19)
 
 - Full server and Docker management stack
 - Credential vault with AES-256-GCM encryption
@@ -142,6 +142,7 @@ Environment variables in `docker-compose.yml`:
 - **Home Assistant OS update support** — `os_type='home_assistant'`; uses the standard HA REST API; checks and updates both Core and OS in one pass via `update.*` entity states and `update/install` service calls; connection drop handled for Core restart and OS reboot; Reboot button calls `/api/services/hassio/host_reboot`. Per-server settings: `ha_protocol`, `ha_port` (default 8123), `ha_verify_ssl` (migration #8). Token stored encrypted in `password_hash` field. No SSH required.
 - **API Token credential type** — credential vault extended with `api_token` subtype (migration #9 adds `credential_subtype TEXT` column); stored as `auth_type='password'` + `credential_subtype='api_token'` to satisfy the existing CHECK constraint; displayed as "API Token" badge in the UI; credential picker on HA server forms filters to API Token credentials only.
 - **HA server form UX** — authentication type dropdown is hidden for Home Assistant OS (always bearer token); password field is relabelled "API Token"; hint text directs users to Profile → Security → Long-Lived Access Tokens; credential form field order: Credential Name → Authentication Type → Username → Password/Key.
+- **README rewrite** — project renamed to `homelab-updater`; README rewritten for homelab audience (shorter, personal tone, no directory structure, no API tables except "For the geeks" section); Credits and License sections removed; HA API description corrected (standard REST API, not Supervisor API); NetBox section notes v1 token requirement.
 
 ### TrueNAS CE notes
 
