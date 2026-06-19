@@ -8,7 +8,7 @@ No cloud, no account, no nonsense. Runs in Docker on whatever server you've alre
 
 - **Patch servers**: Debian/Ubuntu via SSH, with sudo support. One click per server or run a whole group at once.
 - **TrueNAS CE (SCALE)**: Uses the TrueNAS REST API — no SSH hacks needed.
-- **Home Assistant OS**: Updates Core and OS in one pass via the Supervisor API. Just paste a long-lived token.
+- **Home Assistant OS**: Updates Core and OS in one pass via the standard HA REST API. Just paste a long-lived access token.
 - **Docker Compose**: Pull latest images and recreate containers across all your hosts.
 - **Scheduling**: Set update groups to run automatically — nightly, weekly, whatever works for you.
 - **Credential vault**: Store SSH keys, passwords, and API tokens once, reuse them everywhere. Encrypted at rest.
@@ -41,7 +41,7 @@ Three env vars you might actually want to change (set in `docker-compose.yml`):
 
 **Credential vault:** Go to the Credentials tab, add a password, SSH key, or API token, give it a name, and select it when adding servers. Change it once, it updates everywhere.
 
-**NetBox (optional):** Go to Plugins → NetBox in the sidebar, paste your URL and a read-only API token, and hit Save. Then use the Import button on the Servers or Docker Hosts tabs.
+**NetBox (optional):** Go to Plugins → NetBox in the sidebar, paste your URL and a **v1 API token** (read-only is fine — generate one under NetBox → Admin → API Tokens), and hit Save. Then use the Import button on the Servers or Docker Hosts tabs.
 
 ## A note on security
 
@@ -128,17 +128,6 @@ If you want to automate things or build on top of homelab-updater, here are all 
 | `GET` | `/api/credentials` | List credentials (no secrets returned) |
 | `POST` | `/api/credentials` | Add credential |
 | `DELETE` | `/api/credentials/:id` | Delete credential |
-
-### NetBox
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/netbox/vms` | List NetBox VMs (server import) |
-| `POST` | `/api/netbox/import` | Bulk-import servers from NetBox |
-| `GET` | `/api/netbox/docker-vms` | List NetBox VMs (Docker host import) |
-| `POST` | `/api/netbox/docker-import` | Bulk-import Docker hosts from NetBox |
-| `GET` | `/api/netbox/config` | Get stored NetBox URL and token status |
-| `POST` | `/api/netbox/config` | Save NetBox URL and/or token |
-| `POST` | `/api/netbox/test-connection` | Test NetBox connectivity |
 
 ### Other
 | Method | Path | Description |

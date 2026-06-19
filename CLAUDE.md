@@ -1,8 +1,8 @@
-# Update Manager — Claude Code Reference
+# homelab-updater — Claude Code Reference
 
 ## What this project is
 
-A self-hosted web UI for managing Ubuntu/Debian server updates, TrueNAS CE (SCALE) updates, and Docker Compose project updates at scale. Operators can manually trigger or schedule `apt-get` upgrades, TrueNAS system updates, and `docker compose pull/up` runs across fleets of servers, with real-time progress, update logs, Discord notifications, and NetBox import.
+A self-hosted web UI for managing Ubuntu/Debian server updates, TrueNAS CE (SCALE) updates, and Docker Compose project updates across a homelab. Operators can manually trigger or schedule `apt-get` upgrades, TrueNAS system updates, and `docker compose pull/up` runs across fleets of servers, with real-time progress, update logs, Discord notifications, and NetBox import.
 
 Designed for internal use on a trusted network — no user auth, no HTTPS (add a reverse proxy for that).
 
@@ -139,7 +139,7 @@ Environment variables in `docker-compose.yml`:
 - **Plugins → NetBox settings page** — users can configure NetBox URL and API token in the UI (stored encrypted in `plugin_settings` table); no container restart needed. Test Connection works with unsaved form values too.
 - **TrueNAS CE (SCALE) update support** — `os_type` field on servers; REST API-based update flow (`/update/status` → `/update/download` → `/update/run`); live SSE progress with download %; reboot-required flag set after apply.
 - **TrueNAS CE per-server connection settings** — protocol (HTTP/HTTPS) and SSL verification (checkbox) stored in `truenas_protocol` + `truenas_verify_ssl` columns (migration #7); fields appear only when TrueNAS CE OS type is selected; SSL verify field hides when HTTP is chosen.
-- **Home Assistant OS update support** — `os_type='home_assistant'`; uses HA Supervisor REST API; checks and updates both Core and OS in one pass; connection drop handled for Core restart and OS reboot; Reboot button triggers `/api/supervisor/host/reboot`. Per-server settings: `ha_protocol`, `ha_port` (default 8123), `ha_verify_ssl` (migration #8). Token stored encrypted in `password_hash` field. No SSH required.
+- **Home Assistant OS update support** — `os_type='home_assistant'`; uses the standard HA REST API; checks and updates both Core and OS in one pass via `update.*` entity states and `update/install` service calls; connection drop handled for Core restart and OS reboot; Reboot button calls `/api/services/hassio/host_reboot`. Per-server settings: `ha_protocol`, `ha_port` (default 8123), `ha_verify_ssl` (migration #8). Token stored encrypted in `password_hash` field. No SSH required.
 - **API Token credential type** — credential vault extended with `api_token` subtype (migration #9 adds `credential_subtype TEXT` column); stored as `auth_type='password'` + `credential_subtype='api_token'` to satisfy the existing CHECK constraint; displayed as "API Token" badge in the UI; credential picker on HA server forms filters to API Token credentials only.
 - **HA server form UX** — authentication type dropdown is hidden for Home Assistant OS (always bearer token); password field is relabelled "API Token"; hint text directs users to Profile → Security → Long-Lived Access Tokens; credential form field order: Credential Name → Authentication Type → Username → Password/Key.
 
@@ -153,12 +153,12 @@ Environment variables in `docker-compose.yml`:
 
 ### Home Assistant OS notes
 
-- Update uses HA Supervisor REST API at `http(s)://{ip}:{port}/api/supervisor/`
+- Update uses the standard HA REST API at `http(s)://{ip}:{port}/api/`
 - Auth: long-lived access token (generate in HA profile → Security → Long-Lived Access Tokens), stored encrypted in `password_hash`
 - Default: HTTP, port 8123, SSL verification off
-- Update flow: checks Core (`/api/supervisor/core`) → updates if available → checks OS (`/api/supervisor/os`) → updates if available
+- Update flow: checks Core via `GET /api/states/update.home_assistant_core_update` → installs via `POST /api/services/update/install` → checks OS via `GET /api/states/update.home_assistant_operating_system_update` → installs if available
 - Core update restarts the HA container (no system reboot); OS update writes to inactive boot slot then reboots
-- Reboot button uses `/api/supervisor/host/reboot`
+- Reboot button calls `POST /api/services/hassio/host_reboot`
 - **No SSH credentials needed** — username field is hidden in the form (placeholder 'homeassistant' stored in DB)
 - Auth type dropdown is hidden in server forms for HA — it always uses bearer token
 - Credential picker on HA server forms shows only API Token credentials
