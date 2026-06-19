@@ -4,6 +4,8 @@ Tired of SSH-ing into every box in your homelab just to run `apt upgrade`? homel
 
 No cloud, no account, no nonsense. Runs in Docker on whatever server you've already got.
 
+> **Before you continue:** do you have backups? Have you *tested* those backups? No? Go do that first. We'll wait. This tool applies real updates to real systems and while that's usually fine, "usually" is doing a lot of heavy lifting in that sentence.
+
 ## What it does
 
 - **Patch servers**: Debian/Ubuntu via SSH, with sudo support. One click per server or run a whole group at once.
