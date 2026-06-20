@@ -170,6 +170,12 @@ Environment variables in `docker-compose.yml`:
 - No immediate open tasks — project is feature-complete for its stated scope
 - Potential additions: HTTPS/reverse-proxy docs, rate limiting, SSH key passphrase support, configurable auto-hide timeout for activity panel
 
+### Reboot flag management (2026-06-20)
+
+- **Manual clear button** — server cards now show a "Clear" link inline with "⚠ Reboot recommended" when `needs_reboot=1`. Clicking it calls `POST /api/servers/:id/clear-reboot` (sets `needs_reboot=0`) and refreshes the card + dashboard counter. Useful when a server was rebooted outside the UI and the flag was not cleared automatically.
+- **`POST /api/servers/:id/clear-reboot`** — new route in `routes/servers.js`; no reboot is triggered, only the DB flag is cleared.
+- **`rebootServer()` bug fix** — `services/update.js` `rebootServer()` now sets `needs_reboot=0` after a successful Debian/Ubuntu or TrueNAS reboot command (previously it did not clear the flag; only Home Assistant did).
+
 ---
 
 *Update this "Current status" section at the end of each Claude Code session.*

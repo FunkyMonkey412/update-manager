@@ -195,4 +195,13 @@ router.post('/:id/reboot', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.post('/:id/clear-reboot', async (req, res) => {
+    try {
+        const server = await dbGet('SELECT * FROM servers WHERE id = ?', [req.params.id]);
+        if (!server) return res.status(404).json({ error: 'Server not found' });
+        await dbRun('UPDATE servers SET needs_reboot=0 WHERE id=?', [server.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = { router, serverSessions, groupSessions };

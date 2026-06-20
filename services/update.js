@@ -429,6 +429,7 @@ async function rebootServer(server) {
         const sudoExec = makeSudoExec(ssh, server.sudo_password_hash);
         await sudoExec('reboot');
         ssh.dispose();
+        await dbRun('UPDATE servers SET needs_reboot=0 WHERE id=?', [server.id]);
         return { success: true, message: 'Server reboot initiated' };
     } catch (error) {
         return { success: false, message: error.message };

@@ -322,7 +322,7 @@ function displayServers() {
                 <p class="text-slate-300"><span class="text-slate-400">User:</span> ${escapeHtml(s.username)}</p>
                 <p class="text-slate-300"><span class="text-slate-400">Auth:</span> ${escapeHtml(s.auth_type)}</p>
                 <p class="text-slate-300"><span class="text-slate-400">Group:</span> ${escapeHtml(s.group_name || 'None')}</p>
-                ${s.needs_reboot ? '<p class="text-yellow-400 text-xs font-medium">⚠ Reboot recommended</p>' : ''}
+                ${s.needs_reboot ? `<p class="flex items-center gap-2 text-yellow-400 text-xs font-medium">⚠ Reboot recommended <button onclick="clearRebootFlag(${s.id})" class="text-slate-400 hover:text-slate-200 underline font-normal">Clear</button></p>` : ''}
                 ${s.last_update ? `<p class="text-slate-300"><span class="text-slate-400">Updated:</span> ${new Date(s.last_update).toLocaleDateString('nl-NL', { timeZone: 'Europe/Amsterdam' })}</p>` : ''}
             </div>
             <div class="grid grid-cols-2 gap-2">
@@ -381,7 +381,16 @@ async function rebootServer(serverId) {
         const res = await fetch(`/api/servers/${serverId}/reboot`, { method: 'POST' });
         const result = await res.json();
         result.success ? showSuccess(result.message) : showError(result.message);
+        if (result.success) { await loadServers(); loadDashboard(); }
     } catch { showError('Failed to reboot server'); }
+}
+
+async function clearRebootFlag(serverId) {
+    try {
+        const res = await fetch(`/api/servers/${serverId}/clear-reboot`, { method: 'POST' });
+        if (res.ok) { showSuccess('Reboot flag cleared'); await loadServers(); loadDashboard(); }
+        else { const err = await res.json(); showError(err.error || 'Failed to clear flag'); }
+    } catch { showError('Failed to clear reboot flag'); }
 }
 
 function editServer(serverId) {
