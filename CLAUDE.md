@@ -129,7 +129,7 @@ Environment variables in `docker-compose.yml`:
 
 ## Current status
 
-### Done (as of 2026-06-19)
+### Done (as of 2026-06-20)
 
 - Full server and Docker management stack
 - Credential vault with AES-256-GCM encryption
@@ -143,6 +143,8 @@ Environment variables in `docker-compose.yml`:
 - **API Token credential type** — credential vault extended with `api_token` subtype (migration #9 adds `credential_subtype TEXT` column); stored as `auth_type='password'` + `credential_subtype='api_token'` to satisfy the existing CHECK constraint; displayed as "API Token" badge in the UI; credential picker on HA server forms filters to API Token credentials only.
 - **HA server form UX** — authentication type dropdown is hidden for Home Assistant OS (always bearer token); password field is relabelled "API Token"; hint text directs users to Profile → Security → Long-Lived Access Tokens; credential form field order: Credential Name → Authentication Type → Username → Password/Key.
 - **README rewrite** — project renamed to `homelab-updater`; README rewritten for homelab audience (shorter, personal tone, no directory structure, no API tables except "For the geeks" section); Credits and License sections removed; HA API description corrected (standard REST API, not Supervisor API); NetBox section notes v1 token requirement.
+- **Server form cleanup for HA and TrueNAS** — saved credential picker and sudo password field are now hidden when Home Assistant OS or TrueNAS CE is selected (neither uses SSH sudo); "Test Connection & Detect Auth Methods" button renamed to "Test Connection"; HA and TrueNAS each get their own test-connection route (`POST /api/servers/test-ha-connection`, `POST /api/servers/test-truenas-connection`) that probe the respective HTTP APIs instead of SSH.
+- **HA manual backup** — "Backup" button added to Home Assistant OS server cards; calls `POST /api/servers/:id/backup` → `backupServerHomeAssistant()` in `services/update.js` → `POST /api/services/hassio/backup_full` on the HA instance. Connection drops during backup start are treated as success (HA briefly interrupts its HTTP server when kicking off a backup), matching the pattern used by `rebootServerHomeAssistant()`.
 
 ### TrueNAS CE notes
 
@@ -162,7 +164,9 @@ Environment variables in `docker-compose.yml`:
 - Reboot button calls `POST /api/services/hassio/host_reboot`
 - **No SSH credentials needed** — username field is hidden in the form (placeholder 'homeassistant' stored in DB)
 - Auth type dropdown is hidden in server forms for HA — it always uses bearer token
-- Credential picker on HA server forms shows only API Token credentials
+- Credential picker is hidden entirely on HA server forms (token must be entered manually)
+- Sudo password field is hidden on HA and TrueNAS server forms
+- **Backup button** — `POST /api/services/hassio/backup_full`; async, HA responds before the backup finishes; connection drops are tolerated as success
 - Highest migration id: **9** (`add_credential_subtype`)
 
 ### In progress / next
