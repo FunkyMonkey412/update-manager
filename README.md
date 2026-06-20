@@ -10,7 +10,7 @@ No cloud, no account, no nonsense. Runs in Docker on whatever server you've alre
 
 - **Patch servers**: Debian/Ubuntu via SSH, with sudo support. One click per server or run a whole group at once.
 - **TrueNAS CE (SCALE)**: Uses the TrueNAS REST API — no SSH hacks needed.
-- **Home Assistant OS**: Updates Core and OS in one pass via the standard HA REST API. Just paste a long-lived access token.
+- **Home Assistant OS**: Updates Core and OS in one pass via the standard HA REST API. Just paste a long-lived access token. You can also trigger a full backup straight from the server card.
 - **Docker Compose**: Pull latest images and recreate containers across all your hosts.
 - **Scheduling**: Set update groups to run automatically — nightly, weekly, whatever works for you.
 - **Credential vault**: Store SSH keys, passwords, and API tokens once, reuse them everywhere. Encrypted at rest.
@@ -45,6 +45,15 @@ Three env vars you might actually want to change (set in `docker-compose.yml`):
 
 **NetBox (optional):** Go to Plugins → NetBox in the sidebar, paste your URL and a **v1 API token** (read-only is fine — generate one under NetBox → Admin → API Tokens), and hit Save. Then use the Import button on the Servers or Docker Hosts tabs.
 
+## Updating homelab-updater
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Your data in `./data/` stays untouched — migrations run automatically on startup.
+
 ## A note on security
 
 This tool is designed for a trusted home network — there's no login screen by default. Keep port 3000 firewalled to your LAN (or throw Nginx in front of it if you want HTTPS). And make sure to back up `./data/` — it holds your database and encryption key.
@@ -72,8 +81,12 @@ If you want to automate things or build on top of homelab-updater, here are all 
 | `DELETE` | `/api/servers/:id` | Delete server |
 | `POST` | `/api/servers/:id/update` | Trigger update |
 | `POST` | `/api/servers/:id/reboot` | Reboot server |
+| `POST` | `/api/servers/:id/backup` | Trigger full backup (Home Assistant OS only) |
+| `POST` | `/api/servers/:id/clear-reboot` | Clear reboot-required flag |
 | `GET` | `/api/servers/:id/update-stream` | SSE progress stream |
 | `POST` | `/api/servers/test-connection` | Test SSH connectivity |
+| `POST` | `/api/servers/test-ha-connection` | Test Home Assistant connectivity |
+| `POST` | `/api/servers/test-truenas-connection` | Test TrueNAS connectivity |
 
 ### Server Groups
 | Method | Path | Description |

@@ -165,6 +165,12 @@ function togglePortField(prefix) {
 
     filterCredentialPickerForHA(prefix, isHA);
 
+    const credField = document.getElementById(prefix === 'edit' ? 'edit-server-credential-field' : 'add-server-credential-field');
+    if (credField) credField.classList.toggle('hidden', isHA);
+
+    const sudoField = document.getElementById(prefix === 'edit' ? 'edit-server-sudo-field' : 'add-server-sudo-field');
+    if (sudoField) sudoField.classList.toggle('hidden', isHA || isTrueNAS);
+
     if (isTrueNAS) toggleTrueNASSSLField(prefix);
     if (isHA)      toggleHASSLField(prefix);
 }
@@ -330,6 +336,7 @@ function displayServers() {
                 <button onclick="updateServer(${s.id})" class="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium transition-all">Update</button>
                 <button onclick="rebootServer(${s.id})" class="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium transition-all">Reboot</button>
                 <button onclick="deleteServer(${s.id})" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-all">Delete</button>
+                ${s.os_type === 'home_assistant' ? `<button onclick="backupServer(${s.id})" class="col-span-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-all">Backup</button>` : ''}
             </div>
         </div>`).join('');
 }
@@ -383,6 +390,16 @@ async function rebootServer(serverId) {
         result.success ? showSuccess(result.message) : showError(result.message);
         if (result.success) { await loadServers(); loadDashboard(); }
     } catch { showError('Failed to reboot server'); }
+}
+
+async function backupServer(serverId) {
+    const server = servers.find(s => s.id === serverId);
+    if (!confirm(`Start a full backup on "${escapeHtml(server?.name || serverId)}"?`)) return;
+    try {
+        const res = await fetch(`/api/servers/${serverId}/backup`, { method: 'POST' });
+        const result = await res.json();
+        result.success ? showSuccess(result.message) : showError(result.message);
+    } catch { showError('Failed to start backup'); }
 }
 
 async function clearRebootFlag(serverId) {
@@ -451,13 +468,55 @@ async function deleteServer(serverId) {
 }
 
 async function testConnection() {
+    const osType     = document.getElementById('server-os-type')?.value;
     const ip_address = document.getElementById('server-ip').value;
-    const port = document.getElementById('server-port').value || 22;
-    const username = document.getElementById('server-username').value;
-    if (!ip_address || !username) return showError('Enter IP address and username first');
+    const resultDiv  = document.getElementById('connection-test-result');
 
-    const resultDiv = document.getElementById('connection-test-result');
+    if (!ip_address) return showError('Enter IP address first');
     resultDiv.innerHTML = '<div class="text-blue-400">Testing connection...</div>';
+
+    if (osType === 'truenas_ce') {
+        const truenas_protocol   = document.getElementById('server-truenas-protocol')?.value || 'https';
+        const truenas_verify_ssl = document.getElementById('server-truenas-verify-ssl')?.checked ? '1' : '0';
+        try {
+            const res    = await fetch('/api/servers/test-truenas-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip_address, truenas_protocol, truenas_verify_ssl })
+            });
+            const result = await res.json();
+            resultDiv.innerHTML = result.reachable
+                ? `<div class="text-green-400">✅ ${escapeHtml(result.message)}</div>`
+                : `<div class="text-red-400">❌ ${escapeHtml(result.message)}</div>`;
+        } catch (err) {
+            resultDiv.innerHTML = `<div class="text-red-400">❌ ${escapeHtml(err.message)}</div>`;
+        }
+        return;
+    }
+
+    if (osType === 'home_assistant') {
+        const ha_protocol   = document.getElementById('server-ha-protocol')?.value || 'http';
+        const ha_port       = document.getElementById('server-port')?.value || '8123';
+        const ha_verify_ssl = document.getElementById('server-ha-verify-ssl')?.checked ? '1' : '0';
+        try {
+            const res    = await fetch('/api/servers/test-ha-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip_address, ha_protocol, ha_port, ha_verify_ssl })
+            });
+            const result = await res.json();
+            resultDiv.innerHTML = result.reachable
+                ? `<div class="text-green-400">✅ ${escapeHtml(result.message)}</div>`
+                : `<div class="text-red-400">❌ ${escapeHtml(result.message)}</div>`;
+        } catch (err) {
+            resultDiv.innerHTML = `<div class="text-red-400">❌ ${escapeHtml(err.message)}</div>`;
+        }
+        return;
+    }
+
+    const port     = document.getElementById('server-port').value || 22;
+    const username = document.getElementById('server-username').value;
+    if (!username) return showError('Enter IP address and username first');
     try {
         const res = await fetch('/api/servers/test-connection', {
             method: 'POST',

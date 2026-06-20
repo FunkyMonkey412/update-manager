@@ -280,7 +280,7 @@
                         <input type="number" id="server-port" name="port" value="22" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                     </div>
 
-                    <div>
+                    <div id="add-server-credential-field">
                         <label for="server-credential" class="block text-sm font-medium text-slate-300 mb-2">Saved Credential <span class="text-slate-500 font-normal">(optional)</span></label>
                         <select id="server-credential" name="credential_id" onchange="applyCredentialToForm(this,'add-server')" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                             <option value="">— Enter credentials manually —</option>
@@ -295,7 +295,7 @@
 
                     <div>
                         <button type="button" onclick="testConnection()" class="inline-flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg text-slate-200 text-sm font-medium transition-all duration-200">
-                            Test Connection & Detect Auth Methods
+                            Test Connection
                         </button>
                         <div id="connection-test-result" class="mt-3"></div>
                     </div>
@@ -328,7 +328,7 @@
                         </select>
                     </div>
 
-                    <div>
+                    <div id="add-server-sudo-field">
                         <label for="sudo-password" class="block text-sm font-medium text-slate-300 mb-2">Sudo Password</label>
                         <input type="password" id="sudo-password" name="sudo_password" placeholder="Password for sudo commands (optional)" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                         <p class="mt-2 text-sm text-slate-400">Required for running system updates. Leave blank if user has passwordless sudo.</p>
@@ -982,7 +982,7 @@
                     <input type="number" id="edit-server-port" name="port" value="22" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                 </div>
 
-                <div>
+                <div id="edit-server-credential-field">
                     <label for="edit-server-credential" class="block text-sm font-medium text-slate-300 mb-2">Saved Credential <span class="text-slate-500 font-normal">(optional)</span></label>
                     <select id="edit-server-credential" name="credential_id" onchange="applyCredentialToForm(this,'edit-server')" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                         <option value="">— Enter credentials manually —</option>
@@ -1023,7 +1023,7 @@
                     </select>
                 </div>
 
-                <div>
+                <div id="edit-server-sudo-field">
                     <label for="edit-sudo-password" class="block text-sm font-medium text-slate-300 mb-2">Sudo Password</label>
                     <input type="password" id="edit-sudo-password" name="sudo_password" placeholder="Leave blank to keep current password" class="block w-full px-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                     <p class="mt-2 text-sm text-slate-400">Password for sudo commands. Leave blank if user has passwordless sudo or to keep existing.</p>

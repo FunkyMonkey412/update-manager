@@ -229,6 +229,40 @@ async function rebootServerHomeAssistant(server) {
     }
 }
 
+async function backupServerHomeAssistant(server) {
+    try {
+        const token   = await resolveHAToken(server);
+        const client  = makeHAClient(server);
+        const payload = '{}';
+        await new Promise((resolve, reject) => {
+            const req = client.httpModule.request({
+                hostname: server.ip_address,
+                port:     client.port,
+                path:     '/api/services/hassio/backup_full',
+                method:   'POST',
+                ...(client.agent ? { agent: client.agent } : {}),
+                headers: {
+                    Authorization:   `Bearer ${token}`,
+                    'Content-Type':  'application/json',
+                    'Content-Length': Buffer.byteLength(payload)
+                }
+            }, () => resolve());
+            // HA may drop the connection while starting the backup — treat as success
+            req.on('error', err => {
+                if (['ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED', 'ENOTFOUND', 'socket hang up'].includes(err.code || err.message))
+                    resolve();
+                else
+                    reject(err);
+            });
+            req.write(payload);
+            req.end();
+        });
+        return { success: true, message: 'Backup started — HA is creating a full backup in the background' };
+    } catch (error) {
+        return { success: false, message: error.message };
+    }
+}
+
 async function updateServerHomeAssistant(server, progressCallback = null, updateType = 'manual') {
     const emit = (stage, message) => progressCallback?.({ stage, message });
 
@@ -436,4 +470,4 @@ async function rebootServer(server) {
     }
 }
 
-module.exports = { updateServer, rebootServer, logUpdate };
+module.exports = { updateServer, rebootServer, backupServerHomeAssistant, logUpdate };

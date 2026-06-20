@@ -7,7 +7,7 @@ const execAsync = promisify(exec);
 
 const { dbGet, dbAll, dbRun } = require('../db');
 const { encrypt } = require('../utils/crypto');
-const { updateServer, rebootServer } = require('../services/update');
+const { updateServer, rebootServer, backupServerHomeAssistant } = require('../services/update');
 
 const router = express.Router();
 const upload = multer({ dest: 'ssh-keys/' });
@@ -27,6 +27,63 @@ router.get('/', async (req, res) => {
         `);
         res.json(rows.map(r => ({ ...r, password_hash: undefined, sudo_password_hash: undefined, ssh_key_path: r.ssh_key_path ? 'configured' : undefined })));
     } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/test-truenas-connection', async (req, res) => {
+    const { ip_address, truenas_protocol, truenas_verify_ssl } = req.body;
+    if (!ip_address) return res.status(400).json({ reachable: false, message: 'IP address is required' });
+    const protocol   = truenas_protocol || 'https';
+    const port       = protocol === 'https' ? 443 : 80;
+    const verifySsl  = truenas_verify_ssl === '1';
+    const httpModule = protocol === 'https' ? require('https') : require('http');
+    const agent      = protocol === 'https' ? new (require('https').Agent)({ rejectUnauthorized: verifySsl }) : undefined;
+
+    try {
+        const statusCode = await new Promise((resolve, reject) => {
+            const req2 = httpModule.request(
+                { hostname: ip_address, port, path: '/api/v2.0/', method: 'GET', ...(agent ? { agent } : {}) },
+                r => resolve(r.statusCode)
+            );
+            req2.setTimeout(8000, () => { req2.destroy(); reject(new Error('Connection timed out')); });
+            req2.on('error', reject);
+            req2.end();
+        });
+        const reachable = statusCode < 500;
+        res.json({ reachable, message: reachable
+            ? `TrueNAS reachable (HTTP ${statusCode})`
+            : `Unexpected response: HTTP ${statusCode}` });
+    } catch (err) {
+        res.json({ reachable: false, message: err.message });
+    }
+});
+
+router.post('/test-ha-connection', async (req, res) => {
+    const { ip_address, ha_protocol, ha_port, ha_verify_ssl } = req.body;
+    if (!ip_address) return res.status(400).json({ reachable: false, message: 'IP address is required' });
+    const protocol   = ha_protocol || 'http';
+    const port       = parseInt(ha_port) || 8123;
+    const verifySsl  = ha_verify_ssl === '1';
+    const httpModule = protocol === 'https' ? require('https') : require('http');
+    const agent      = protocol === 'https' ? new (require('https').Agent)({ rejectUnauthorized: verifySsl }) : undefined;
+
+    try {
+        const statusCode = await new Promise((resolve, reject) => {
+            const req2 = httpModule.request(
+                { hostname: ip_address, port, path: '/api/', method: 'GET', ...(agent ? { agent } : {}) },
+                r => resolve(r.statusCode)
+            );
+            req2.setTimeout(8000, () => { req2.destroy(); reject(new Error('Connection timed out')); });
+            req2.on('error', reject);
+            req2.end();
+        });
+        // 401 = HA responded but no token supplied — still reachable
+        const reachable = statusCode < 500 || statusCode === 401;
+        res.json({ reachable, message: reachable
+            ? `Home Assistant reachable (HTTP ${statusCode})`
+            : `Unexpected response: HTTP ${statusCode}` });
+    } catch (err) {
+        res.json({ reachable: false, message: err.message });
+    }
 });
 
 router.post('/test-connection', async (req, res) => {
@@ -192,6 +249,15 @@ router.post('/:id/reboot', async (req, res) => {
         const server = await dbGet('SELECT * FROM servers WHERE id = ?', [req.params.id]);
         if (!server) return res.status(404).json({ error: 'Server not found' });
         res.json(await rebootServer(server));
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/:id/backup', async (req, res) => {
+    try {
+        const server = await dbGet('SELECT * FROM servers WHERE id = ?', [req.params.id]);
+        if (!server) return res.status(404).json({ error: 'Server not found' });
+        if (server.os_type !== 'home_assistant') return res.status(400).json({ error: 'Backup only supported for Home Assistant OS' });
+        res.json(await backupServerHomeAssistant(server));
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
